@@ -569,10 +569,7 @@ class Query(object):
             return
         orig_opts = self.model._meta
         seen = {}
-        if orig_opts.proxy:
-            must_include = {orig_opts.proxy_for_model: set([orig_opts.pk])}
-        else:
-            must_include = {self.model: set([orig_opts.pk])}
+        must_include = {orig_opts.concrete_parent: set([orig_opts.pk])}
         for field_name in field_names:
             parts = field_name.split(LOOKUP_SEP)
             cur_model = self.model
@@ -1949,9 +1946,4 @@ def add_to_dict(data, key, value):
         data[key] = set([value])
 
 def get_proxied_model(opts):
-    int_opts = opts
-    proxied_model = None
-    while int_opts.proxy:
-        proxied_model = int_opts.proxy_for_model
-        int_opts = proxied_model._meta
-    return proxied_model
+    return opts.concrete_parent

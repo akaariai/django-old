@@ -145,6 +145,11 @@ class Collector(object):
         if not new_objs:
             return
         model = new_objs[0].__class__
+        # Always use the concrete model class for deletion. We will handle
+        # all the proxy-child classes later on. We do this because when
+        # we are deleting a model, we are in fact deleting the whole proxy
+        # equivalence class.
+        model = model._meta.concrete_parent
 
         # Recursively collect parent models, but not their related objects.
         # These will be found by meta.get_all_related_objects()
@@ -157,27 +162,44 @@ class Collector(object):
                              reverse_dependency=True)
 
         if collect_related:
-            for related in model._meta.get_all_related_objects(include_hidden=True):
-                field = related.field
-                if related.model._meta.auto_created:
-                    self.add_batch(related.model, field, new_objs)
-                else:
-                    sub_objs = self.related_objects(related, new_objs)
-                    if not sub_objs:
-                        continue
-                    field.rel.on_delete(self, field, sub_objs, self.using)
+            # Collect all related objects to this model and for models proxying
+            # this model. Note that at this point the model is always the concrete
+            # parent in the proxy chain.
+            # When deleting a model we are also deleting every model that
+            # is in proxy-relation to this model. Would this be better handled by
+            # get_all_related_objects kwarg include_proxy? Are we continuously
+            # finding the same relations (proxy has all the same relations out as
+            # the parent).
+            proxy_equivalance = [model] + model._meta.proxying_models
 
-            # TODO This entire block is only needed as a special case to
-            # support cascade-deletes for GenericRelation. It should be
-            # removed/fixed when the ORM gains a proper abstraction for virtual
-            # or composite fields, and GFKs are reworked to fit into that.
-            for relation in model._meta.many_to_many:
-                if not relation.rel.through:
-                    sub_objs = relation.bulk_related_objects(new_objs, self.using)
-                    self.collect(sub_objs,
-                                 source=model,
-                                 source_attr=relation.rel.related_name,
-                                 nullable=True)
+            # keep track of duplicate related models. These can be seen because of
+            # proxy models.
+            seen_related = set()
+            for base in proxy_equivalance:
+                for related in base._meta.get_all_related_objects(include_hidden=True):
+                    if related in seen_related:
+                        continue
+                    seen_related.add(related)
+                    field = related.field
+                    if related.model._meta.auto_created:
+                        self.add_batch(related.model, field, new_objs)
+                    else:
+                        sub_objs = self.related_objects(related, new_objs)
+                        if not sub_objs:
+                            continue
+                        field.rel.on_delete(self, field, sub_objs, self.using)
+
+                # TODO This entire block is only needed as a special case to
+                # support cascade-deletes for GenericRelation. It should be
+                # removed/fixed when the ORM gains a proper abstraction for virtual
+                # or composite fields, and GFKs are reworked to fit into that.
+                for relation in base._meta.many_to_many:
+                    if not relation.rel.through:
+                        sub_objs = relation.bulk_related_objects(new_objs, self.using)
+                        self.collect(sub_objs,
+                                     source=model,
+                                     source_attr=relation.rel.related_name,
+                                     nullable=True)
 
     def related_objects(self, related, objs):
         """

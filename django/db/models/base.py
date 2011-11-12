@@ -75,6 +75,8 @@ class ModelBase(type):
                     new_class._meta.get_latest_by = base_meta.get_latest_by
 
         is_proxy = new_class._meta.proxy
+        if not is_proxy and not abstract:
+            new_class._meta.concrete_parent = new_class
 
         if getattr(new_class, '_default_manager', None):
             if not is_proxy:
@@ -122,9 +124,12 @@ class ModelBase(type):
             if (new_class._meta.local_fields or
                     new_class._meta.local_many_to_many):
                 raise FieldError("Proxy model '%s' contains model fields." % name)
-            while base._meta.proxy:
-                base = base._meta.proxy_for_model
             new_class._meta.setup_proxy(base)
+            # Add this class to 'proxying_models' for every proxied parent of
+            # this class.
+            while base:
+                base._meta.proxying_models.append(new_class)
+                base = base._meta.proxy_for_model
 
         # Do the appropriate setup for any model parents.
         o2o_map = dict([(f.rel.to, f) for f in new_class._meta.local_fields
@@ -149,9 +154,7 @@ class ModelBase(type):
                                         (field.name, name, base.__name__))
             if not base._meta.abstract:
                 # Concrete classes...
-                while base._meta.proxy:
-                    # Skip over a proxy class to the "real" base it proxies.
-                    base = base._meta.proxy_for_model
+                base = base._meta.concrete_parent
                 if base in o2o_map:
                     field = o2o_map[base]
                 elif not is_proxy:
