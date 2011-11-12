@@ -43,7 +43,7 @@ class Options(object):
         # None for abstract classes, own class for concrete models
         # and the first concrete parent for proxy models. This does
         # not track multitable parents.
-        self.concrete_parent = None
+        self.concrete_class = None
         self.proxy_for_model = None
         # We need to keep track of which models are proxying this model
         # so that we can fetch all references to this model when deleting.
@@ -190,7 +190,7 @@ class Options(object):
         """
         self.pk = target._meta.pk
         self.proxy_for_model = target
-        self.concrete_parent = target._meta.concrete_parent
+        self.concrete_class = target._meta.concrete_class
         self.db_table = target._meta.db_table
 
     def __repr__(self):

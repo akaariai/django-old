@@ -19,7 +19,7 @@ class ContentTypeManager(models.Manager):
         """
         Returns the options for the concrete parent of the model.
         """
-        return model._meta.concrete_parent._meta
+        return model._meta.concrete_class._meta
 
     def _get_from_cache(self, opts):
         key = (opts.app_label, opts.object_name.lower())

@@ -76,7 +76,7 @@ class ModelBase(type):
 
         is_proxy = new_class._meta.proxy
         if not is_proxy and not abstract:
-            new_class._meta.concrete_parent = new_class
+            new_class._meta.concrete_class = new_class
 
         if getattr(new_class, '_default_manager', None):
             if not is_proxy:
@@ -154,7 +154,7 @@ class ModelBase(type):
                                         (field.name, name, base.__name__))
             if not base._meta.abstract:
                 # Concrete classes...
-                base = base._meta.concrete_parent
+                base = base._meta.concrete_class
                 if base in o2o_map:
                     field = o2o_map[base]
                 elif not is_proxy:

@@ -149,7 +149,7 @@ class Collector(object):
         # all the proxy-child classes later on. We do this because when
         # we are deleting a model, we are in fact deleting the whole proxy
         # equivalence class.
-        model = model._meta.concrete_parent
+        model = model._meta.concrete_class
 
         # Recursively collect parent models, but not their related objects.
         # These will be found by meta.get_all_related_objects()
