@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.test.utils import override_settings
+#from django.test.utils import override_settings
 from .models import Image, File, Photo, FooFile, FooImage, FooPhoto
 
 
@@ -22,7 +22,7 @@ class ProxyDeleteImageTest(TestCase):
         foo_file = FooFile(my_file=test_file)
         foo_file.save()
 
-    @override_settings(DEBUG=True)
+    #@override_settings(DEBUG=True)
     def test_delete(self):
         self.assertTrue(Image.objects.all().delete() is None)
         # An Image deletion == File deletion
@@ -31,9 +31,9 @@ class ProxyDeleteImageTest(TestCase):
         # The Image deletion cascaded and *all* references to it are deleted.
         self.assertEqual(len(FooImage.objects.all()), 0)
         self.assertEqual(len(FooFile.objects.all()), 0)
-        from django.db import connection
-        for q in connection.queries:
-            print q
+        #from django.db import connection
+        #for q in connection.queries:
+        #    print q
 
 
 class ProxyDeletePhotoTest(ProxyDeleteImageTest):
@@ -53,7 +53,7 @@ class ProxyDeletePhotoTest(ProxyDeleteImageTest):
         foo_photo.save()
 
 
-    @override_settings(DEBUG=True)
+    #@override_settings(DEBUG=True)
     def test_delete(self):
         self.assertTrue(Photo.objects.all().delete() is None)
         # A Photo deletion == Image deletion == File deletion
@@ -65,9 +65,10 @@ class ProxyDeletePhotoTest(ProxyDeleteImageTest):
         self.assertEqual(len(FooPhoto.objects.all()), 0)
         self.assertEqual(len(FooFile.objects.all()), 0)
         self.assertEqual(len(FooImage.objects.all()), 0)
-        from django.db import connection
-        for q in connection.queries:
-            print q
+        #from django.db import connection
+        #for q in connection.queries:
+        #    print q
+        #print len(connection.queries)
 
 
 class ProxyDeleteFileTest(ProxyDeleteImageTest):
