@@ -195,6 +195,9 @@ class Collector(object):
                 # or composite fields, and GFKs are reworked to fit into that.
                 for relation in base._meta.many_to_many:
                     if not relation.rel.through:
+                        if relation in seen_related:
+                            continue
+                        seen_related.add(related)
                         sub_objs = relation.bulk_related_objects(new_objs, self.using)
                         self.collect(sub_objs,
                                      source=model,
