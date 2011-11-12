@@ -197,7 +197,7 @@ class Collector(object):
                     if not relation.rel.through:
                         if relation in seen_related:
                             continue
-                        seen_related.add(related)
+                        seen_related.add(relation)
                         sub_objs = relation.bulk_related_objects(new_objs, self.using)
                         self.collect(sub_objs,
                                      source=model,
