@@ -127,6 +127,7 @@ class SelectForUpdateTests(TransactionTestCase):
         thread.join()
         self.end_blocking_transaction()
         self.check_exc(status[-1])
+        import pdb; pdb.set_trace()
 
     # In Python 2.6 beta and some final releases, exceptions raised in __len__
     # are swallowed (Python issue 1242657), so these cases return an empty
@@ -163,6 +164,12 @@ class SelectForUpdateTests(TransactionTestCase):
             # per-thread basis
             transaction.enter_transaction_management(True)
             transaction.managed(True)
+            sid = transaction.savepoint()
+            try:
+                cursor = connection.cursor()
+                cursor.execute("Im here")
+            except Exception:
+                transaction.savepoint_rollback(sid)
             people = list(
                 Person.objects.all().select_for_update(nowait=nowait)
             )

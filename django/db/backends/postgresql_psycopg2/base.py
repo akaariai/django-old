@@ -77,6 +77,13 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_bulk_insert = True
     supports_tablespaces = True
 
+class SomeObject(object):
+    def __init__(self, t_name):
+        self.t_name = t_name
+
+    def __del__(self):
+        print 'I got deleted %s' % self.t_name
+
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'postgresql'
     operators = {
@@ -97,7 +104,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     }
 
     def __init__(self, *args, **kwargs):
+        import threading
+        t = threading.current_thread()
+        print "DatabaseWrapper got created in thread %s" % t.name
+        self.t_name = t.name
         super(DatabaseWrapper, self).__init__(*args, **kwargs)
+        self.delete_marker = SomeObject(self.t_name)
 
         self.features = DatabaseFeatures(self)
         autocommit = self.settings_dict["OPTIONS"].get('autocommit', False)
@@ -119,6 +131,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.cursor().execute('SET CONSTRAINTS ALL DEFERRED')
 
     def close(self):
+        print "connection got closed in thread %s" % self.t_name
         if self.connection is None:
             return
 
@@ -214,3 +227,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 return self.connection.commit()
             except Database.IntegrityError, e:
                 raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]
+
+    def __del__(self):
+        import threading
+        t = threading.current_thread()
+        t.someval = 'foo'
+        print "DatabaseWrapper got deleted in thread %s" % t.name
