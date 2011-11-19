@@ -164,6 +164,8 @@ class SelectForUpdateTests(TransactionTestCase):
             # per-thread basis
             transaction.enter_transaction_management(True)
             transaction.managed(True)
+            # the following code is here to create a ERROR log statement in the
+            # db logs so that you can see the backend pid.
             sid = transaction.savepoint()
             try:
                 cursor = connection.cursor()
