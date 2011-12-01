@@ -285,6 +285,7 @@ class QuerySet(object):
         if fill_cache:
             klass_info = get_klass_info(model, max_depth=max_depth,
                                         requested=requested, only_load=only_load)
+        attnames = [f.attname for f in model._meta.fields]
         for row in compiler.results_iter():
             if fill_cache:
                 obj, _ = get_cached_row(row, index_start, db, klass_info,
@@ -296,11 +297,9 @@ class QuerySet(object):
                     obj._state.old_field_vals = dict(zip(init_list, row_data))
                 else:
                     # Omit aggregates in object creation.
-                    obj = model(*row[index_start:aggregate_start])
-                    obj._state.old_field_vals = dict(
-                        (f.attname, getattr(obj, f.attname)) for
-                            f in self.model._meta.fields)
-
+                    init_cols = row[index_start:aggregate_start]
+                    obj = model(*init_cols)
+                    obj._state.old_field_vals = dict(zip(attnames, init_cols))
                 # Store the source database of the object
                 obj._state.db = db
                 # This object came from the database; it's not being added.
