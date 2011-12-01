@@ -126,7 +126,7 @@ class SignalTests(TestCase):
         data[:] = []
 
         p2.id = 99998
-        p2.save()
+        p2.save(compat_mode=True)
         self.assertEqual(data, [
             (p2, False),
             p2,

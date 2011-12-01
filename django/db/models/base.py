@@ -271,6 +271,11 @@ class ModelState(object):
         # Necessary for correct validation of new instances of objects with explicit (non-auto) PKs.
         # This impacts validation only; it has no effect on the actual save.
         self.adding = True
+        # If the object is not from DB, it doesn't have any information
+        # about old field values.
+        self.old_field_vals = None
+
+NoneMarker = ModelState() # Im lazy...
 
 class Model(object):
     __metaclass__ = ModelBase
@@ -450,7 +455,8 @@ class Model(object):
             return getattr(self, field_name)
         return getattr(self, field.attname)
 
-    def save(self, force_insert=False, force_update=False, using=None):
+    def save(self, force_insert=False, force_update=False, using=None,
+             compat_mode=False):
         """
         Saves the current instance. Override this in a subclass if you want to
         control the saving process.
@@ -461,12 +467,12 @@ class Model(object):
         """
         if force_insert and force_update:
             raise ValueError("Cannot force both insert and updating in model saving.")
-        self.save_base(using=using, force_insert=force_insert, force_update=force_update)
+        self.save_base(using=using, force_insert=force_insert, force_update=force_update, compat_mode=compat_mode)
 
     save.alters_data = True
 
     def save_base(self, raw=False, cls=None, origin=None, force_insert=False,
-            force_update=False, using=None):
+            force_update=False, using=None, compat_mode=False):
         """
         Does the heavy-lifting involved in saving. Subclasses shouldn't need to
         override this method. It's separate from save() in order to hide the
@@ -516,6 +522,8 @@ class Model(object):
 
             # First, try an UPDATE. If that doesn't update anything, do an INSERT.
             pk_val = self._get_pk_val(meta)
+            if self._state.old_field_vals and meta.pk.attname in self._state.old_field_vals and self._state.old_field_vals[meta.pk.attname] != pk_val and not compat_mode and not force_update and not force_insert:
+                raise Exception('No change of PK allowed (except if compat_mode=True)')
             pk_set = pk_val is not None
             record_exists = True
             manager = cls._base_manager
@@ -525,7 +533,10 @@ class Model(object):
                         manager.using(using).filter(pk=pk_val).exists())):
                     # It does already exist, so do an UPDATE.
                     if force_update or non_pks:
+                        # check the changed values:
                         values = [(f, None, (raw and getattr(self, f.attname) or f.pre_save(self, False))) for f in non_pks]
+                        if self._state.old_field_vals and not compat_mode and not force_update and self._state.db == using:
+                            values = [v for v in values if v[0].attname in self._state.old_field_vals and self._state.old_field_vals[v[0].attname] != v[2]]
                         if values:
                             rows = manager.using(using).filter(pk=pk_val)._update(values)
                             if force_update and not rows:
@@ -559,6 +570,11 @@ class Model(object):
         self._state.db = using
         # Once saved, this is no longer a to-be-added instance.
         self._state.adding = False
+        if not self._state.old_field_vals:
+            self._state.old_field_vals = {}
+        self._state.old_field_vals.update(
+            dict((f.attname, getattr(self, f.attname))
+                      for f in meta.local_fields))
 
         # Signal that the save is complete
         if origin and not meta.auto_created:
@@ -575,6 +591,9 @@ class Model(object):
         collector = Collector(using=using)
         collector.collect([self])
         collector.delete()
+        self._state.adding = True
+        self._state.db = None
+        self._state.old_field_vals = None
 
     delete.alters_data = True
 

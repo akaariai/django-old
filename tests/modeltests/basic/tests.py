@@ -11,6 +11,33 @@ from .models import Article
 
 class ModelTest(TestCase):
 
+    def test_pk_change(self):
+        a = Article(
+            id=None,
+            headline='foo',
+            pub_date=datetime(2005, 7, 28),
+        )
+        a.save()
+        a.id = -1
+        try:
+            a.save()
+            self.assertTrue(False)
+        except Exception, e:
+            self.assertTrue('PK' in str(e))
+        a.save(compat_mode=True)
+        self.assertEqual(Article.objects.count(), 2)
+        a = Article.objects.all()[0]
+        a.id = -2
+        try:
+            a.save()
+            self.assertTrue(False)
+        except Exception, e:
+            self.assertTrue('PK' in str(e))
+        a.save(compat_mode=True)
+        # now we can save it
+        a.pub_date = datetime(2005, 7, 27)
+        a.save()
+
     def test_lookup(self):
         # No articles are in the system yet.
         self.assertQuerysetEqual(Article.objects.all(), [])

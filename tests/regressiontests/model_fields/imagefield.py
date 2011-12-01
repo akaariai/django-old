@@ -43,6 +43,7 @@ if Image:
 
             file_path2 = os.path.join(os.path.dirname(__file__), "8x4.png")
             self.file2 = self.File(open(file_path2, 'rb'))
+            print self.file2
 
         def tearDown(self):
             """
@@ -384,6 +385,7 @@ if Image:
 
             # Dimensions should get set for the saved file.
             p.mugshot.save("mug", self.file1)
+            import ipdb; ipdb.set_trace()
             p.headshot.save("head", self.file2)
             self.check_dimensions(p, 4, 8, 'mugshot')
             self.check_dimensions(p, 8, 4, 'headshot')

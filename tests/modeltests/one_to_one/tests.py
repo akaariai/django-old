@@ -26,9 +26,15 @@ class OneToOneTests(TestCase):
 
     def test_setter(self):
         # Set the place using assignment notation. Because place is the primary
-        # key on Restaurant, the save will create a new restaurant
+        # key on Restaurant, the save will create a new restaurant in
+        # compat_mode.
         self.r.place = self.p2
-        self.r.save()
+        try:
+            self.r.save()
+            self.assertFalse(True)
+        except Exception, e:
+            self.assertTrue('PK' in str(e))
+        self.r.save(compat_mode=True)
         self.assertEqual(repr(self.p2.restaurant), '<Restaurant: Ace Hardware the restaurant>')
         self.assertEqual(repr(self.r.place), '<Place: Ace Hardware the place>')
         self.assertEqual(self.p2.pk, self.r.pk)

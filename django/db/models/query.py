@@ -293,9 +293,13 @@ class QuerySet(object):
                 if skip:
                     row_data = row[index_start:aggregate_start]
                     obj = model_cls(**dict(zip(init_list, row_data)))
+                    obj._state.old_field_vals = dict(zip(init_list, row_data))
                 else:
                     # Omit aggregates in object creation.
                     obj = model(*row[index_start:aggregate_start])
+                    obj._state.old_field_vals = dict(
+                        (f.attname, getattr(obj, f.attname)) for
+                            f in self.model._meta.fields)
 
                 # Store the source database of the object
                 obj._state.db = db
@@ -1347,8 +1351,12 @@ def get_cached_row(row, index_start, using,  klass_info, offset=0):
     else:
         if field_names:
             obj = klass(**dict(zip(field_names, fields)))
+            obj._state.old_field_vals = dict(zip(field_names, fields))
         else:
             obj = klass(*fields)
+            obj._state.old_field_vals = dict(
+                 (f.attname, getattr(obj, f.attname)) for
+                     f in klass._meta.fields)
 
     # If an object was retrieved, set the database state.
     if obj:

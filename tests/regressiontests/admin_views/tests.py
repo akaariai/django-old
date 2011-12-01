@@ -2051,7 +2051,7 @@ class AdminActionsTest(TestCase):
         settings.USE_L10N = True
         subscriber = Subscriber.objects.get(id=1)
         subscriber.id = 9999
-        subscriber.save()
+        subscriber.save(compat_mode=True)
         action_data = {
             ACTION_CHECKBOX_NAME: [9999, 2],
             'action' : 'delete_selected',

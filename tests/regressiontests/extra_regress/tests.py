@@ -31,7 +31,7 @@ class ExtraRegressTests(TestCase):
         rm2 = rm.new_revision()
         rm2.title = "Second Revision"
         rm.when = datetime.datetime(2008, 9, 28, 14, 25, 0)
-        rm2.save()
+        rm2.save(compat_mode=True)
 
         self.assertEqual(rm2.title, 'Second Revision')
         self.assertEqual(rm2.base.title, 'First Revision')
