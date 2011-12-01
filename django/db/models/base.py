@@ -20,7 +20,7 @@ from django.db.models.options import Options
 from django.db.models import signals
 from django.db.models.loading import register_models, get_model
 from django.utils.translation import ugettext_lazy as _
-from django.utils.functional import curry
+from django.utils.functional import curry, cached_property
 from django.utils.encoding import smart_str, force_unicode
 from django.utils.text import get_text_list, capfirst
 
@@ -273,7 +273,15 @@ class ModelState(object):
         self.adding = True
         # If the object is not from DB, it doesn't have any information
         # about old field values.
-        self.old_field_vals = None
+        self._db_field_names = []
+        self._db_field_vals = []
+
+    @cached_property
+    def old_field_vals(self):
+        if self._db_field_names:
+            return dict(zip(self._db_field_names, self._db_field_vals))
+        else:
+            return None
 
 NoneMarker = ModelState() # Im lazy...
 
