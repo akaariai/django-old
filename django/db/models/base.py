@@ -283,8 +283,6 @@ class ModelState(object):
         else:
             return None
 
-NoneMarker = ModelState() # Im lazy...
-
 class Model(object):
     __metaclass__ = ModelBase
     _deferred = False
@@ -530,7 +528,7 @@ class Model(object):
 
             # First, try an UPDATE. If that doesn't update anything, do an INSERT.
             pk_val = self._get_pk_val(meta)
-            if self._state.old_field_vals and meta.pk.attname in self._state.old_field_vals and self._state.old_field_vals[meta.pk.attname] != pk_val and not compat_mode and not force_update and not force_insert:
+            if pk_val is not None and self._state.old_field_vals and meta.pk.attname in self._state.old_field_vals and self._state.old_field_vals[meta.pk.attname] != pk_val and not compat_mode and not force_update and not force_insert:
                 raise Exception('No change of PK allowed (except if compat_mode=True)')
             pk_set = pk_val is not None
             record_exists = True
@@ -581,7 +579,7 @@ class Model(object):
         if not self._state.old_field_vals:
             self._state.old_field_vals = {}
         self._state.old_field_vals.update(
-            dict((f.attname, getattr(self, f.attname))
+            dict((f.attname, self.__dict__[f.attname])
                       for f in meta.local_fields))
 
         # Signal that the save is complete
