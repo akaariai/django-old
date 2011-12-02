@@ -897,6 +897,7 @@ class ManyToManyRel(object):
         return self.to._meta.pk
 
 class ForeignKey(RelatedField, Field):
+    inplace_mutable = False
     empty_strings_allowed = False
     default_error_messages = {
         'invalid': _('Model %(model)s with pk %(pk)r does not exist.')

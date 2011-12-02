@@ -27,6 +27,33 @@ class NOT_PROVIDED:
 BLANK_CHOICE_DASH = [("", "---------")]
 BLANK_CHOICE_NONE = [("", "None")]
 
+NoneMarker = object()
+
+class MutableFieldDescriptor(object):
+    def __init__(self, field):
+        self.field = field
+        self._old_val_copy = NoneMarker
+
+    def __get__(self, instance=None, owner=None): 
+        if instance is None:
+            raise AttributeError(
+                "The '%s' attribute can only be accessed from %s instances."
+                % (self.field.name, owner.__name__))
+        self._check_change(instance, instance.__dict__[self.field.attname])
+        return instance.__dict__[self.field.attname]
+
+    def _check_change(self, instance, value):
+        if self._old_val_copy != NoneMarker:
+            if self._old_val_copy != value:
+                instance._state.changed_attrs.add(self.field.attname)
+                self._old_val_copy = copy.copy(value)
+        else:
+	    self._old_val_copy = copy.copy(value)
+       
+    def __set__(self, instance, value):
+        self._check_change(instance, value)
+        instance.__dict__[self.field.attname] = value
+
 class FieldDoesNotExist(Exception):
     pass
 
@@ -51,6 +78,9 @@ class Field(object):
     # Designates whether empty strings fundamentally are allowed at the
     # database level.
     empty_strings_allowed = True
+    # Is the value stored in this field mutable?
+    inplace_mutable = True
+    descriptor_class = MutableFieldDescriptor
 
     # These track each time a Field instance is created. Used to retain order.
     # The auto_creation_counter is used for fields that Django implicitly
@@ -246,6 +276,8 @@ class Field(object):
         if self.choices:
             setattr(cls, 'get_%s_display' % self.name,
                     curry(cls._get_FIELD_display, field=self))
+        if self.inplace_mutable:
+            setattr(cls, self.attname, self.descriptor_class(self))
 
     def get_attname(self):
         return self.name
@@ -504,6 +536,7 @@ class Field(object):
 
 class AutoField(Field):
     description = _("Integer")
+    inplace_mutable = False
 
     empty_strings_allowed = False
     default_error_messages = {
@@ -547,6 +580,7 @@ class AutoField(Field):
 
 class BooleanField(Field):
     empty_strings_allowed = False
+    inplace_mutable = False
     default_error_messages = {
         'invalid': _(u"'%s' value must be either True or False."),
     }
@@ -600,6 +634,7 @@ class BooleanField(Field):
         return super(BooleanField, self).formfield(**defaults)
 
 class CharField(Field):
+    inplace_mutable = False
     description = _("String (up to %(max_length)s)")
 
     def __init__(self, *args, **kwargs):
@@ -640,6 +675,7 @@ class CommaSeparatedIntegerField(CharField):
         return super(CommaSeparatedIntegerField, self).formfield(**defaults)
 
 class DateField(Field):
+    inplace_mutable = False
     empty_strings_allowed = False
     default_error_messages = {
         'invalid': _(u"'%s' value has an invalid date format. It must be "
@@ -725,6 +761,7 @@ class DateField(Field):
         return super(DateField, self).formfield(**defaults)
 
 class DateTimeField(DateField):
+    inplace_mutable = False
     empty_strings_allowed = False
     default_error_messages = {
         'invalid': _(u"'%s' value has an invalid format. It must be in "
@@ -813,6 +850,7 @@ class DateTimeField(DateField):
         return super(DateTimeField, self).formfield(**defaults)
 
 class DecimalField(Field):
+    inplace_mutable = False
     empty_strings_allowed = False
     default_error_messages = {
         'invalid': _(u"'%s' value must be a decimal number."),
@@ -890,6 +928,7 @@ class EmailField(CharField):
         return super(EmailField, self).formfield(**defaults)
 
 class FilePathField(Field):
+    inplace_mutable = False
     description = _("File path")
 
     def __init__(self, verbose_name=None, name=None, path='', match=None,
@@ -912,6 +951,7 @@ class FilePathField(Field):
         return "FilePathField"
 
 class FloatField(Field):
+    inplace_mutable = False
     empty_strings_allowed = False
     default_error_messages = {
         'invalid': _("'%s' value must be a float."),
@@ -941,6 +981,7 @@ class FloatField(Field):
         return super(FloatField, self).formfield(**defaults)
 
 class IntegerField(Field):
+    inplace_mutable = False
     empty_strings_allowed = False
     default_error_messages = {
         'invalid': _("'%s' value must be an integer."),
@@ -990,6 +1031,7 @@ class BigIntegerField(IntegerField):
         return super(BigIntegerField, self).formfield(**defaults)
 
 class IPAddressField(Field):
+    inplace_mutable = False
     empty_strings_allowed = False
     description = _("IPv4 address")
 
@@ -1006,6 +1048,7 @@ class IPAddressField(Field):
         return super(IPAddressField, self).formfield(**defaults)
 
 class GenericIPAddressField(Field):
+    inplace_mutable = False
     empty_strings_allowed = True
     description = _("IP address")
     default_error_messages = {}
@@ -1047,6 +1090,7 @@ class GenericIPAddressField(Field):
 
 
 class NullBooleanField(Field):
+    inplace_mutable = False
     empty_strings_allowed = False
     default_error_messages = {
         'invalid': _("'%s' value must be either None, True or False."),
@@ -1100,6 +1144,7 @@ class NullBooleanField(Field):
         return super(NullBooleanField, self).formfield(**defaults)
 
 class PositiveIntegerField(IntegerField):
+    inplace_mutable = False
     description = _("Integer")
 
     def get_internal_type(self):
@@ -1111,6 +1156,7 @@ class PositiveIntegerField(IntegerField):
         return super(PositiveIntegerField, self).formfield(**defaults)
 
 class PositiveSmallIntegerField(IntegerField):
+    inplace_mutable = False
     description = _("Integer")
     def get_internal_type(self):
         return "PositiveSmallIntegerField"
@@ -1121,6 +1167,7 @@ class PositiveSmallIntegerField(IntegerField):
         return super(PositiveSmallIntegerField, self).formfield(**defaults)
 
 class SlugField(CharField):
+    inplace_mutable = False
     description = _("String (up to %(max_length)s)")
     def __init__(self, *args, **kwargs):
         kwargs['max_length'] = kwargs.get('max_length', 50)
@@ -1144,6 +1191,7 @@ class SmallIntegerField(IntegerField):
         return "SmallIntegerField"
 
 class TextField(Field):
+    inplace_mutable = False
     description = _("Text")
 
     def get_internal_type(self):
@@ -1160,6 +1208,7 @@ class TextField(Field):
         return super(TextField, self).formfield(**defaults)
 
 class TimeField(Field):
+    inplace_mutable = False
     empty_strings_allowed = False
     default_error_messages = {
         'invalid': _(u"'%s' value has an invalid format. It must be in "

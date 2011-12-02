@@ -273,23 +273,29 @@ class ModelState(object):
         self.adding = True
         # If the object is not from DB, it doesn't have any information
         # about old field values.
-        self._db_field_names = []
-        self._db_field_vals = []
+        self.changed_attrs = set()
 
-    @cached_property
-    def old_field_vals(self):
-        if self._db_field_names:
-            return dict(zip(self._db_field_names, self._db_field_vals))
-        else:
-            return None
 
 class Model(object):
     __metaclass__ = ModelBase
     _deferred = False
 
+    def __setattr__(self, attr, val):
+        if hasattr(self, attr) and val != getattr(self, attr):
+            self._state.changed_attrs.add(attr)
+        super(Model, self).__setattr__(attr, val)
+    _base_setattr = __setattr__
+
     def __init__(self, *args, **kwargs):
         signals.pre_init.send(sender=self.__class__, args=args, kwargs=kwargs)
 
+        # Dirty trick - we can save considerable amount of time in object
+        # initialization when we know the __setattr__ will not need to be
+        # called.
+        if self._base_setattr == self.__setattr__:
+            _set = super(Model, self).__setattr__
+        else:
+            _set = self.__setattr__
         # Set up the storage for instance state
         self._state = ModelState()
 
@@ -309,11 +315,11 @@ class Model(object):
             # is *not* consumed. We rely on this, so don't change the order
             # without changing the logic.
             for val, field in izip(args, fields_iter):
-                setattr(self, field.attname, val)
+                _set(field.attname, val)
         else:
             # Slower, kwargs-ready version.
             for val, field in izip(args, fields_iter):
-                setattr(self, field.attname, val)
+                _set(field.attname, val)
                 kwargs.pop(field.name, None)
                 # Maintain compatibility with existing calls.
                 if isinstance(field.rel, ManyToOneRel):
@@ -364,15 +370,15 @@ class Model(object):
                 # field.name instead of field.attname (e.g. "user" instead of
                 # "user_id") so that the object gets properly cached (and type
                 # checked) by the RelatedObjectDescriptor.
-                setattr(self, field.name, rel_obj)
+                _set(field.name, rel_obj)
             else:
-                setattr(self, field.attname, val)
+                _set(field.attname, val)
 
         if kwargs:
             for prop in kwargs.keys():
                 try:
                     if isinstance(getattr(self.__class__, prop), property):
-                        setattr(self, prop, kwargs.pop(prop))
+                        _set(prop, kwargs.pop(prop))
                 except AttributeError:
                     pass
             if kwargs:
@@ -462,7 +468,7 @@ class Model(object):
         return getattr(self, field.attname)
 
     def save(self, force_insert=False, force_update=False, using=None,
-             compat_mode=False):
+             compat_mode=False, only_changed=False):
         """
         Saves the current instance. Override this in a subclass if you want to
         control the saving process.
@@ -473,12 +479,15 @@ class Model(object):
         """
         if force_insert and force_update:
             raise ValueError("Cannot force both insert and updating in model saving.")
-        self.save_base(using=using, force_insert=force_insert, force_update=force_update, compat_mode=compat_mode)
+        self.save_base(using=using, force_insert=force_insert,
+                       force_update=force_update, compat_mode=compat_mode,
+                       only_changed=only_changed)
 
     save.alters_data = True
 
     def save_base(self, raw=False, cls=None, origin=None, force_insert=False,
-            force_update=False, using=None, compat_mode=False):
+            force_update=False, using=None, compat_mode=False,
+            only_changed=False):
         """
         Does the heavy-lifting involved in saving. Subclasses shouldn't need to
         override this method. It's separate from save() in order to hide the
@@ -487,6 +496,7 @@ class Model(object):
         """
         using = using or router.db_for_write(self.__class__, instance=self)
         assert not (force_insert and force_update)
+        only_changed = only_changed and self._state.db == using and not self._state.adding and not compat_mode
         if cls is None:
             cls = self.__class__
             meta = cls._meta
@@ -516,7 +526,9 @@ class Model(object):
                 if field and getattr(self, parent._meta.pk.attname) is None and getattr(self, field.attname) is not None:
                     setattr(self, parent._meta.pk.attname, getattr(self, field.attname))
 
-                self.save_base(cls=parent, origin=org, using=using)
+                self.save_base(cls=parent, origin=org, using=using,
+                               force_insert=force_insert, force_update=force_update,
+                               only_changed=only_changed, compat_mode=compat_mode)
 
                 if field:
                     setattr(self, field.attname, self._get_pk_val(parent._meta))
@@ -528,21 +540,23 @@ class Model(object):
 
             # First, try an UPDATE. If that doesn't update anything, do an INSERT.
             pk_val = self._get_pk_val(meta)
-            if pk_val is not None and self._state.old_field_vals and meta.pk.attname in self._state.old_field_vals and self._state.old_field_vals[meta.pk.attname] != pk_val and not compat_mode and not force_update and not force_insert:
-                raise Exception('No change of PK allowed (except if compat_mode=True)')
             pk_set = pk_val is not None
+            if (pk_set and meta.pk.attname in self._state.changed_attrs
+                    and not compat_mode and not force_update
+                    and not force_insert and not self._state.adding):
+                raise ValueError('No change of PK allowed (except if compat_mode, force_update or force_insert is set)')
             record_exists = True
             manager = cls._base_manager
             if pk_set:
                 # Determine whether a record with the primary key already exists.
-                if (force_update or (not force_insert and
+                if (only_changed or force_update or (not force_insert and
                         manager.using(using).filter(pk=pk_val).exists())):
                     # It does already exist, so do an UPDATE.
                     if force_update or non_pks:
                         # check the changed values:
                         values = [(f, None, (raw and getattr(self, f.attname) or f.pre_save(self, False))) for f in non_pks]
-                        if self._state.old_field_vals and not compat_mode and not force_update and self._state.db == using:
-                            values = [v for v in values if v[0].attname in self._state.old_field_vals and self._state.old_field_vals[v[0].attname] != v[2]]
+                        if only_changed:
+                            values = [v for v in values if v[0].attname in self._state.changed_attrs]
                         if values:
                             rows = manager.using(using).filter(pk=pk_val)._update(values)
                             if force_update and not rows:
@@ -572,15 +586,12 @@ class Model(object):
                     setattr(self, meta.pk.attname, result)
             transaction.commit_unless_managed(using=using)
 
-        # Store the database on which the object was saved
-        self._state.db = using
-        # Once saved, this is no longer a to-be-added instance.
-        self._state.adding = False
-        if not self._state.old_field_vals:
-            self._state.old_field_vals = {}
-        self._state.old_field_vals.update(
-            dict((f.attname, self.__dict__[f.attname])
-                      for f in meta.local_fields))
+        if origin == self.__class__:
+            # Store the database on which the object was saved
+            self._state.db = using
+            # Once saved, this is no longer a to-be-added instance.
+            self._state.adding = False
+            self._state.changed_attrs = set()
 
         # Signal that the save is complete
         if origin and not meta.auto_created:
@@ -599,7 +610,7 @@ class Model(object):
         collector.delete()
         self._state.adding = True
         self._state.db = None
-        self._state.old_field_vals = None
+        self._state.changed_attrs = set()
 
     delete.alters_data = True
 

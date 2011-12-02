@@ -294,18 +294,14 @@ class QuerySet(object):
                 if skip:
                     row_data = row[index_start:aggregate_start]
                     obj = model_cls(**dict(zip(init_list, row_data)))
-                    obj._state._db_field_names = init_list
-                    obj._state._db_field_vals = row_data
                 else:
                     # Omit aggregates in object creation.
-                    init_cols = row[index_start:aggregate_start]
-                    obj = model(*init_cols)
-                    obj._state._db_field_names = attnames
-                    obj._state._db_field_vals = init_cols
+                    obj = model(*row[index_start:aggregate_start])
                 # Store the source database of the object
                 obj._state.db = db
                 # This object came from the database; it's not being added.
                 obj._state.adding = False
+                obj._state.changed_attrs = set()
 
             if extra_select:
                 for i, k in enumerate(extra_select):
@@ -1352,18 +1348,14 @@ def get_cached_row(row, index_start, using,  klass_info, offset=0):
     else:
         if field_names:
             obj = klass(**dict(zip(field_names, fields)))
-            obj._state._db_field_vals = fields
-            obj._state._db_field_names = field_names
         else:
             obj = klass(*fields)
-            obj._state._db_field_names = [f.attname for
-                     f in klass._meta.fields]
-            obj._state._db_field_vals = fields
 
     # If an object was retrieved, set the database state.
     if obj:
         obj._state.db = using
         obj._state.adding = False
+        obj._state.changed_attrs = set()
 
     # Instantiate related fields
     index_end = index_start + field_count + offset
@@ -1498,6 +1490,7 @@ class RawQuerySet(object):
 
             instance._state.db = db
             instance._state.adding = False
+            instance._state.changed_attrs = set()
 
             yield instance
 

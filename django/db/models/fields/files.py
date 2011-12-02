@@ -2,7 +2,7 @@ import datetime
 import os
 
 from django import forms
-from django.db.models.fields import Field
+from django.db.models.fields import Field, MutableFieldDescriptor
 from django.core.files.base import File
 from django.core.files.storage import default_storage
 from django.core.files.images import ImageFile
@@ -133,7 +133,7 @@ class FieldFile(File):
         # be restored later, by FileDescriptor below.
         return {'name': self.name, 'closed': False, '_committed': True, '_file': None}
 
-class FileDescriptor(object):
+class FileDescriptor(MutableFieldDescriptor):
     """
     The descriptor for the file attribute on the model instance. Returns a
     FieldFile when accessed so you can do stuff like::
@@ -145,8 +145,6 @@ class FileDescriptor(object):
         >>> instance.file = File(...)
 
     """
-    def __init__(self, field):
-        self.field = field
 
     def __get__(self, instance=None, owner=None):
         if instance is None:
@@ -154,6 +152,11 @@ class FileDescriptor(object):
                 "The '%s' attribute can only be accessed from %s instances."
                 % (self.field.name, owner.__name__))
 
+
+        self._check_change(instance, instance.__dict__[self.field.name].name)
+        return instance.__dict__[self.field.name]
+
+    def __set__(self, instance, value):
         # This is slightly complicated, so worth an explanation.
         # instance.file`needs to ultimately return some instance of `File`,
         # probably a subclass. Additionally, this returned object needs to have
@@ -164,10 +167,6 @@ class FileDescriptor(object):
         # value of the field we have to dynamically construct some sort of
         # "thing" to return.
 
-        # The instance dict contains whatever was originally assigned
-        # in __set__.
-        file = instance.__dict__[self.field.name]
-
         # If this value is a string (instance.file = "path/to/file") or None
         # then we simply wrap it with the appropriate attribute class according
         # to the file field. [This is FieldFile for FileFields and
@@ -175,33 +174,35 @@ class FileDescriptor(object):
         # subclasses might also want to subclass the attribute class]. This
         # object understands how to convert a path to a file, and also how to
         # handle None.
-        if isinstance(file, basestring) or file is None:
-            attr = self.field.attr_class(instance, self.field, file)
+        if isinstance(value, basestring) or value is None:
+            attr = self.field.attr_class(instance, self.field, value)
             instance.__dict__[self.field.name] = attr
 
         # Other types of files may be assigned as well, but they need to have
         # the FieldFile interface added to the. Thus, we wrap any other type of
         # File inside a FieldFile (well, the field's attr_class, which is
         # usually FieldFile).
-        elif isinstance(file, File) and not isinstance(file, FieldFile):
-            file_copy = self.field.attr_class(instance, self.field, file.name)
-            file_copy.file = file
+        elif isinstance(value, File) and not isinstance(value, FieldFile):
+            file_copy = self.field.attr_class(instance, self.field, value.name)
+            file_copy.file = value
             file_copy._committed = False
             instance.__dict__[self.field.name] = file_copy
 
         # Finally, because of the (some would say boneheaded) way pickle works,
         # the underlying FieldFile might not actually itself have an associated
         # file. So we need to reset the details of the FieldFile in those cases.
-        elif isinstance(file, FieldFile) and not hasattr(file, 'field'):
-            file.instance = instance
-            file.field = self.field
-            file.storage = self.field.storage
+        elif isinstance(value, FieldFile) and not hasattr(value, 'field'):
+            value.instance = instance
+            value.field = self.field
+            value.storage = self.field.storage
+            instance.__dict__[self.field.name] = value
+        else:
+            assert hasattr(value, 'name')
+            instance.__dict__[self.field.name] = value
 
         # That was fun, wasn't it?
-        return instance.__dict__[self.field.name]
+        self._check_change(instance, instance.__dict__[self.field.name].name)
 
-    def __set__(self, instance, value):
-        instance.__dict__[self.field.name] = value
 
 class FileField(Field):
     # The class to wrap instance attributes in. Accessing the file object off

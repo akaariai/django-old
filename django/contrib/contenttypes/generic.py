@@ -145,6 +145,7 @@ class GenericForeignKey(object):
 
 class GenericRelation(RelatedField, Field):
     """Provides an accessor to generic related objects (e.g. comments)"""
+    inplace_mutable = False
 
     def __init__(self, to, **kwargs):
         kwargs['verbose_name'] = kwargs.get('verbose_name', None)
