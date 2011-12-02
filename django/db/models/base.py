@@ -203,6 +203,10 @@ class ModelBase(type):
         # the first time this model tries to register with the framework. There
         # should only be one class for each model, so we always return the
         # registered version.
+        if new_class.__setattr__ == Model.__setattr__:
+            new_class._init_setattr = object.__setattr__
+        else:
+            new_class._init_setattr = new_class.__setattr__
         return get_model(new_class._meta.app_label, name,
                          seed_cache=False, only_installed=False)
 
@@ -275,7 +279,6 @@ class ModelState(object):
         # about old field values.
         self.changed_attrs = set()
 
-
 class Model(object):
     __metaclass__ = ModelBase
     _deferred = False
@@ -285,19 +288,15 @@ class Model(object):
                 and val != getattr(self, attr)):
             self._state.changed_attrs.add(attr)
         super(Model, self).__setattr__(attr, val)
-    _base_setattr = __setattr__
 
     def __init__(self, *args, **kwargs):
         signals.pre_init.send(sender=self.__class__, args=args, kwargs=kwargs)
 
-        # Dirty trick - we can save considerable amount of time in object
-        # initialization when we know the __setattr__ will not need to be
-        # called. Over 50% performance increase!
         self.__dict__['_state'] = ModelState()
-        if self._base_setattr == self.__setattr__:
-            _set = super(Model, self).__setattr__
-        else:
-            _set = self.__setattr__
+        # Dirty trick - we can save considerable amount of time in object
+        # initialization when we know the __setattr__ doesn't need to be
+        # called. Over 50% performance increase!
+        _set = self._init_setattr
         # Set up the storage for instance state
 
         # There is a rather weird disparity here; if kwargs, it's set, then args
