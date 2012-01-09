@@ -235,7 +235,7 @@ class QuerySet(object):
                 dyn_manager = self._create_dynamic_manager(manager)
                 dyn_manager._chain_to_qs = self
                 return getattr(dyn_manager, attr)
-        super(QuerySet, self).__getattr__(attr)
+        raise AttributeError
 
     _dyn_manager_cache = {}
     def _create_dynamic_manager(self, manager):
