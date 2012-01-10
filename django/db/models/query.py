@@ -28,7 +28,7 @@ class QuerySet(object):
     """
     Represents a lazy database lookup for a set of objects.
     """
-    def __init__(self, model=None, query=None, using=None):
+    def __init__(self, model=None, query=None, using=None, _manager=None):
         self.model = model
         # EmptyQuerySet instantiates QuerySet with model as None
         self._db = using
@@ -39,6 +39,9 @@ class QuerySet(object):
         self._for_write = False
         self._prefetch_related_lookups = []
         self._prefetch_done = False
+        # The below manager is used when checking for @querymethod decorated
+        # methods. Can be changed by use_manager().
+        self._manager = _manager
 
     ########################
     # PYTHON MAGIC METHODS #
@@ -224,11 +227,14 @@ class QuerySet(object):
         return combined
 
     def __getattr__(self, attr):
-        for _, _, manager in itertools.chain(self.model._meta.abstract_managers, self.model._meta.concrete_managers):
-            if hasattr(manager, attr):
-                inst = manager.__class__(_chain_to_qs=self)
-                return getattr(inst, attr)
-        raise AttributeError
+        # Make sure not to access any self.attr, this can cause infinite
+        # loops when combined with pickling.
+        manager = self.__dict__.get('_manager')
+        if hasattr(manager, attr):
+            inst = manager.__class__(_chain_to_qs=self)
+            return getattr(inst, attr)
+        raise AttributeError("Attribute %s not found from this QuerySet or "
+                             "manager '%s'" % (attr, manager))
 
     ####################################
     # METHODS THAT DO DATABASE QUERIES #
@@ -826,6 +832,21 @@ class QuerySet(object):
         clone._db = alias
         return clone
 
+    def use_manager(self, manager_name):
+        clone = self._clone()
+        opts = self.model._meta
+        available_managers = list(itertools.chain(opts.abstract_managers,
+                                                  opts.concrete_managers))
+        for _, name, manager in available_managers:
+            if name == manager_name and not name.startswith('_'):
+                clone._manager = manager
+                return clone
+        available_names = [name for _, name, _ in available_managers
+                           if not name.startswith('_')]
+        print available_names
+        raise ValueError("Manager '%s' not found! Available managers: %s" %
+                         (manager_name, u', '.join(available_names)))
+
     ###################################
     # PUBLIC INTROSPECTION ATTRIBUTES #
     ###################################
@@ -863,6 +884,7 @@ class QuerySet(object):
         c = klass(model=self.model, query=query, using=self._db)
         c._for_write = self._for_write
         c._prefetch_related_lookups = self._prefetch_related_lookups[:]
+        c._manager = self._manager
         c.__dict__.update(kwargs)
         if setup and hasattr(c, '_setup_query'):
             c._setup_query()
@@ -1122,8 +1144,8 @@ class DateQuerySet(QuerySet):
 
 
 class EmptyQuerySet(QuerySet):
-    def __init__(self, model=None, query=None, using=None):
-        super(EmptyQuerySet, self).__init__(model, query, using)
+    def __init__(self, model=None, query=None, using=None, _manager=None):
+        super(EmptyQuerySet, self).__init__(model, query, using, _manager)
         self._result_cache = []
 
     def __and__(self, other):

@@ -108,7 +108,7 @@ class Manager(object):
     #######################
 
     def get_empty_query_set(self):
-        return EmptyQuerySet(self.model, using=self._db)
+        return EmptyQuerySet(self.model, using=self._db, _manager=self)
 
     def get_query_set(self):
         """Returns a new QuerySet object.  Subclasses can override this method
@@ -117,7 +117,7 @@ class Manager(object):
         if self._chain_to_qs is not None:
             return self._chain_to_qs
         else:
-            return QuerySet(self.model, using=self._db)
+            return QuerySet(self.model, using=self._db, _manager=self)
 
     def none(self):
         return self.get_empty_query_set()
