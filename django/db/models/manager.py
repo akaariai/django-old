@@ -46,12 +46,16 @@ class Manager(object):
     # Tracks each time a Manager instance is created. Used to retain order.
     creation_counter = 0
 
-    def __init__(self):
+    def __init__(self, _incr_creation_counter=True):
         super(Manager, self).__init__()
-        self._set_creation_counter()
+        # We do not want to increment creation counter when
+        # coming here from dynamic manager creation. 
+        if _incr_creation_counter:
+            self._set_creation_counter()
         self.model = None
         self._inherited = False
         self._db = None
+        self._chain_to_qs = None
 
     def contribute_to_class(self, model, name):
         # TODO: Use weakref because of possible memory leak / circular reference.
@@ -107,7 +111,10 @@ class Manager(object):
         """Returns a new QuerySet object.  Subclasses can override this method
         to easily customize the behavior of the Manager.
         """
-        return QuerySet(self.model, using=self._db)
+        if self._chain_to_qs is not None:
+            return self._chain_to_qs
+        else:
+            return QuerySet(self.model, using=self._db)
 
     def none(self):
         return self.get_empty_query_set()

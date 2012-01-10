@@ -223,30 +223,14 @@ class QuerySet(object):
         combined.query.combine(other.query, sql.OR)
         return combined
 
-    def add_managers(self, managers):
-        # This is not part of the suggested API, created so that I can test
-        # the main idea.
-        self.managers = managers
-        return self
-
     def __getattr__(self, attr):
-        for manager in self.managers:
+        for _, _, manager in itertools.chain(self.model._meta.abstract_managers, self.model._meta.concrete_managers):
             if hasattr(manager, attr):
-                dyn_manager = self._create_dynamic_manager(manager)
-                dyn_manager._chain_to_qs = self
-                return getattr(dyn_manager, attr)
+                inst = manager.__class__(_incr_creation_counter=False)
+                inst.model = self.model
+                inst._chain_to_qs = self
+                return getattr(inst, attr)
         raise AttributeError
-
-    _dyn_manager_cache = {}
-    def _create_dynamic_manager(self, manager):
-        if manager.__class__ not in self._dyn_manager_cache:
-            def get_query_set(self):
-                return self._chain_to_qs
-            print 'here'
-            dyn_manager = type('DynamicManager', (manager.__class__,), {})
-            dyn_manager.get_query_set = get_query_set
-            self._dyn_manager_cache[manager.__class__] = dyn_manager
-        return self._dyn_manager_cache[manager.__class__]()
 
     ####################################
     # METHODS THAT DO DATABASE QUERIES #
