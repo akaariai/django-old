@@ -60,17 +60,27 @@ class TemplateCommand(BaseCommand):
         self.paths_to_remove = []
         self.verbosity = int(options.get('verbosity'))
 
+        # If it's not a valid directory name.
+        if not re.search(r'^[_a-zA-Z]\w*$', name):
+            # Provide a smart error message, depending on the error.
+            if not re.search(r'^[_a-zA-Z]', name):
+                message = ('make sure the name begins '
+                           'with a letter or underscore')
+            else:
+                message = 'use only numbers, letters and underscores'
+            raise CommandError("%r is not a valid %s name. Please %s." %
+                               (name, app_or_project, message))
+
         # if some directory is given, make sure it's nicely expanded
         if target is None:
-            target = os.getcwd()
+            top_dir = path.join(os.getcwd(), name)
+            try:
+                os.makedirs(top_dir)
+            except OSError, e:
+                raise CommandError(e)
         else:
-            target = path.expanduser(target)
+            top_dir = path.expanduser(target)
 
-        top_dir = path.join(target, name)
-        try:
-            os.makedirs(top_dir)
-        except OSError, e:
-            raise CommandError(e)
 
         extensions = tuple(
             handle_extensions(options.get('extensions'), ignored=()))
@@ -87,17 +97,6 @@ class TemplateCommand(BaseCommand):
             base_name: name,
             base_directory: top_dir,
         }))
-
-        # If it's not a valid directory name.
-        if not re.search(r'^[_a-zA-Z]\w*$', name):
-            # Provide a smart error message, depending on the error.
-            if not re.search(r'^[_a-zA-Z]', name):
-                message = ('make sure the name begins '
-                           'with a letter or underscore')
-            else:
-                message = 'use only numbers, letters and underscores'
-            raise CommandError("%r is not a valid %s name. Please %s." %
-                               (name, app_or_project, message))
 
         # Setup a stub settings environment for template rendering
         from django.conf import settings
@@ -160,7 +159,7 @@ class TemplateCommand(BaseCommand):
             if self.verbosity >= 2:
                 self.stdout.write("Cleaning up temporary files.\n")
             for path_to_remove in self.paths_to_remove:
-                if os.path.isfile(path_to_remove):
+                if path.isfile(path_to_remove):
                     os.remove(path_to_remove)
                 else:
                     shutil.rmtree(path_to_remove,
@@ -178,14 +177,15 @@ class TemplateCommand(BaseCommand):
             if template.startswith('file://'):
                 template = template[7:]
             expanded_template = path.expanduser(template)
-            if os.path.isdir(expanded_template):
+            expanded_template = path.normpath(expanded_template)
+            if path.isdir(expanded_template):
                 return expanded_template
             if self.is_url(template):
                 # downloads the file and returns the path
                 absolute_path = self.download(template)
             else:
                 absolute_path = path.abspath(expanded_template)
-            if os.path.exists(absolute_path):
+            if path.exists(absolute_path):
                 return self.extract(absolute_path)
 
         raise CommandError("couldn't handle %s template %s." %
@@ -195,21 +195,30 @@ class TemplateCommand(BaseCommand):
         """
         Downloads the given URL and returns the file name.
         """
+        def cleanup_url(url):
+            tmp = url.rstrip('/')
+            filename = tmp.split('/')[-1]
+            if url.endswith('/'):
+                display_url  = tmp + '/'
+            else:
+                display_url = url
+            return filename, display_url
+
         prefix = 'django_%s_template_' % self.app_or_project
         tempdir = tempfile.mkdtemp(prefix=prefix, suffix='_download')
         self.paths_to_remove.append(tempdir)
-        filename = url.split('/')[-1]
+        filename, display_url = cleanup_url(url)
 
         if self.verbosity >= 2:
-            self.stdout.write("Downloading %s\n" % url)
+            self.stdout.write("Downloading %s\n" % display_url)
         try:
-            path, info = urllib.urlretrieve(url,
-                                            os.path.join(tempdir, filename))
+            the_path, info = urllib.urlretrieve(url,
+                                                path.join(tempdir, filename))
         except IOError, e:
             raise CommandError("couldn't download URL %s to %s: %s" %
                                (url, filename, e))
 
-        used_name = path.split('/')[-1]
+        used_name = the_path.split('/')[-1]
 
         # Trying to get better name from response headers
         content_disposition = info.get('content-disposition')
@@ -230,18 +239,18 @@ class TemplateCommand(BaseCommand):
         # Move the temporary file to a filename that has better
         # chances of being recognnized by the archive utils
         if used_name != guessed_filename:
-            guessed_path = os.path.join(tempdir, guessed_filename)
-            shutil.move(path, guessed_path)
+            guessed_path = path.join(tempdir, guessed_filename)
+            shutil.move(the_path, guessed_path)
             return guessed_path
 
         # Giving up
-        return path
+        return the_path
 
-    def splitext(self, path):
+    def splitext(self, the_path):
         """
         Like os.path.splitext, but takes off .tar, too
         """
-        base, ext = posixpath.splitext(path)
+        base, ext = posixpath.splitext(the_path)
         if base.lower().endswith('.tar'):
             ext = base[-4:] + ext
             base = base[:-4]

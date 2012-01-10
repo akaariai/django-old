@@ -11,7 +11,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import urllib
 
 from django import conf, bin, get_version
 from django.conf import settings
@@ -1178,8 +1177,7 @@ class CommandTypes(AdminScriptTestCase):
         args = ['--version']
         out, err = self.run_manage(args)
         self.assertNoOutput(err)
-        # Only check the first part of the version number
-        self.assertOutput(out, get_version().split('-')[0])
+        self.assertOutput(out, get_version())
 
     def test_help(self):
         "--help is handled as a special case"
@@ -1386,25 +1384,52 @@ class StartProject(LiveServerTestCase, AdminScriptTestCase):
         self.assertNoOutput(out)
         self.assertOutput(err, "File exists")
 
+    def test_invalid_project_name(self):
+        "Make sure the startproject management command validates a project name"
+
+        def cleanup(p):
+            if os.path.exists(p):
+                shutil.rmtree(p)
+
+        args = ['startproject', '7testproject']
+        testproject_dir = os.path.join(test_dir, '7testproject')
+
+        out, err = self.run_django_admin(args)
+        self.addCleanup(cleanup, testproject_dir)
+        self.assertOutput(err, "Error: '7testproject' is not a valid project name. Please make sure the name begins with a letter or underscore.")
+        self.assertFalse(os.path.exists(testproject_dir))
+
     def test_simple_project_different_directory(self):
         "Make sure the startproject management command creates a project in a specific directory"
         args = ['startproject', 'testproject', 'othertestproject']
         testproject_dir = os.path.join(test_dir, 'othertestproject')
+        os.mkdir(testproject_dir)
 
         out, err = self.run_django_admin(args)
         self.addCleanup(shutil.rmtree, testproject_dir)
         self.assertNoOutput(err)
-        self.assertTrue(os.path.isdir(os.path.join(testproject_dir, 'testproject')))
-        self.assertTrue(os.path.exists(os.path.join(testproject_dir, 'testproject', 'manage.py')))
+        self.assertTrue(os.path.exists(os.path.join(testproject_dir, 'manage.py')))
 
         # running again..
         out, err = self.run_django_admin(args)
         self.assertNoOutput(out)
-        self.assertOutput(err, "File exists")
+        self.assertOutput(err, "already exists")
 
     def test_custom_project_template(self):
         "Make sure the startproject management command is able to use a different project template"
         template_path = os.path.join(test_dir, 'admin_scripts', 'custom_templates', 'project_template')
+        args = ['startproject', '--template', template_path, 'customtestproject']
+        testproject_dir = os.path.join(test_dir, 'customtestproject')
+
+        out, err = self.run_django_admin(args)
+        self.addCleanup(shutil.rmtree, testproject_dir)
+        self.assertNoOutput(err)
+        self.assertTrue(os.path.isdir(testproject_dir))
+        self.assertTrue(os.path.exists(os.path.join(testproject_dir, 'additional_dir')))
+
+    def test_template_dir_with_trailing_slash(self):
+        "Ticket 17475: Template dir passed has a trailing path separator"
+        template_path = os.path.join(test_dir, 'admin_scripts', 'custom_templates', 'project_template' + os.sep)
         args = ['startproject', '--template', template_path, 'customtestproject']
         testproject_dir = os.path.join(test_dir, 'customtestproject')
 
@@ -1426,10 +1451,35 @@ class StartProject(LiveServerTestCase, AdminScriptTestCase):
         self.assertTrue(os.path.isdir(testproject_dir))
         self.assertTrue(os.path.exists(os.path.join(testproject_dir, 'run.py')))
 
+    def test_custom_project_template_from_tarball_to_alternative_location(self):
+        "Startproject can use a project template from a tarball and create it in a specified location"
+        template_path = os.path.join(test_dir, 'admin_scripts', 'custom_templates', 'project_template.tgz')
+        args = ['startproject', '--template', template_path, 'tarballtestproject', 'altlocation']
+        testproject_dir = os.path.join(test_dir, 'altlocation')
+        os.mkdir(testproject_dir)
+
+        out, err = self.run_django_admin(args)
+        self.addCleanup(shutil.rmtree, testproject_dir)
+        self.assertNoOutput(err)
+        self.assertTrue(os.path.isdir(testproject_dir))
+        self.assertTrue(os.path.exists(os.path.join(testproject_dir, 'run.py')))
+
     def test_custom_project_template_from_tarball_by_url(self):
         "Make sure the startproject management command is able to use a different project template from a tarball via a url"
-        template_path = os.path.join(test_dir, 'admin_scripts', 'custom_templates', 'project_template.tgz')
         template_url = '%s/admin_scripts/custom_templates/project_template.tgz' % self.live_server_url
+
+        args = ['startproject', '--template', template_url, 'urltestproject']
+        testproject_dir = os.path.join(test_dir, 'urltestproject')
+
+        out, err = self.run_django_admin(args)
+        self.addCleanup(shutil.rmtree, testproject_dir)
+        self.assertNoOutput(err)
+        self.assertTrue(os.path.isdir(testproject_dir))
+        self.assertTrue(os.path.exists(os.path.join(testproject_dir, 'run.py')))
+
+    def test_project_template_tarball_url(self):
+        "Startproject management command handles project template tar/zip balls from non-canonical urls"
+        template_url = '%s/admin_scripts/custom_templates/project_template.tgz/' % self.live_server_url
 
         args = ['startproject', '--template', template_url, 'urltestproject']
         testproject_dir = os.path.join(test_dir, 'urltestproject')

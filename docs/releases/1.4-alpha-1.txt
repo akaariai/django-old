@@ -458,13 +458,13 @@ when running the following command::
 
     django-admin.py startproject --template=/path/to/my_project_template myproject
 
-Additionally you can now provide a destination directory as the second
+You can also now provide a destination directory as the second
 argument to both :djadmin:`startapp` and :djadmin:`startproject`::
 
     django-admin.py startapp myapp /path/to/new/app
     django-admin.py startproject myproject /path/to/new/project
 
-For more information see the :djadmin:`startapp` and :djadmin:`startproject`
+For more information, see the :djadmin:`startapp` and :djadmin:`startproject`
 documentation.
 
 Support for time zones
@@ -548,10 +548,9 @@ Django 1.4 also includes several smaller improvements worth noting:
 * Added support in the ORM for generating ``SELECT`` queries containing
   ``DISTINCT ON``.
 
-  The ``distinct()`` ``Queryset`` method now accepts an optional list of model
+  The ``distinct()`` ``QuerySet`` method now accepts an optional list of model
   field names. If specified, then the ``DISTINCT`` statement is limited to these
-  fields. PostgreSQL is the only database backend shipped with Django that
-  supports this new functionality.
+  fields. This is only supported in PostgreSQL.
 
   For more details, see the documentation for
   :meth:`~django.db.models.query.QuerySet.distinct`.
