@@ -846,7 +846,6 @@ class QuerySet(object):
                 return clone
         available_names = [name for _, name, _ in available_managers
                            if not name.startswith('_')]
-        print available_names
         raise ValueError("Manager '%s' not found! Available managers: %s" %
                          (manager_name, u', '.join(available_names)))
 
