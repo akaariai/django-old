@@ -226,9 +226,7 @@ class QuerySet(object):
     def __getattr__(self, attr):
         for _, _, manager in itertools.chain(self.model._meta.abstract_managers, self.model._meta.concrete_managers):
             if hasattr(manager, attr):
-                inst = manager.__class__(_incr_creation_counter=False)
-                inst.model = self.model
-                inst._chain_to_qs = self
+                inst = manager.__class__(_chain_to_qs=self)
                 return getattr(inst, attr)
         raise AttributeError
 

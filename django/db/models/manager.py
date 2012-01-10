@@ -46,16 +46,19 @@ class Manager(object):
     # Tracks each time a Manager instance is created. Used to retain order.
     creation_counter = 0
 
-    def __init__(self, _incr_creation_counter=True):
+    def __init__(self, _chain_to_qs=None):
         super(Manager, self).__init__()
         # We do not want to increment creation counter when
         # coming here from dynamic manager creation. 
-        if _incr_creation_counter:
+        if _chain_to_qs is not None:
+            self._chain_to_qs = _chain_to_qs
+            self.model = _chain_to_qs.model
+        else:
             self._set_creation_counter()
-        self.model = None
+            self._chain_to_qs = None
+            self.model = None
         self._inherited = False
         self._db = None
-        self._chain_to_qs = None
 
     def contribute_to_class(self, model, name):
         # TODO: Use weakref because of possible memory leak / circular reference.
