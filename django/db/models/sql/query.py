@@ -175,7 +175,6 @@ class Query(object):
         return self.get_compiler(DEFAULT_DB_ALIAS).as_sql()
 
     def __deepcopy__(self, memo):
-        import ipdb; ipdb.set_trace()
         result = self.clone(memo=memo)
         memo[id(self)] = result
         return result
@@ -296,7 +295,7 @@ class Query(object):
             obj._extra_select_cache = self._extra_select_cache.copy()
         obj.extra_tables = self.extra_tables
         obj.extra_order_by = self.extra_order_by
-        obj.deferred_loading = copy.deepcopy(self.deferred_loading, memo=memo)
+        obj.deferred_loading = copy.copy(self.deferred_loading[0]), self.deferred_loading[1]
         if self.filter_is_sticky and self.used_aliases:
             obj.used_aliases = self.used_aliases.copy()
         else:
