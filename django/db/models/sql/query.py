@@ -175,6 +175,7 @@ class Query(object):
         return self.get_compiler(DEFAULT_DB_ALIAS).as_sql()
 
     def __deepcopy__(self, memo):
+        import ipdb; ipdb.set_trace()
         result = self.clone(memo=memo)
         memo[id(self)] = result
         return result
@@ -509,7 +510,7 @@ class Query(object):
         # Now relabel a copy of the rhs where-clause and add it to the current
         # one.
         if rhs.where:
-            w = copy.deepcopy(rhs.where)
+            w = where.clone()
             w.relabel_aliases(change_map)
             if not self.where:
                 # Since 'self' matches everything, add an explicit "include
@@ -530,7 +531,7 @@ class Query(object):
             if isinstance(col, (list, tuple)):
                 self.select.append((change_map.get(col[0], col[0]), col[1]))
             else:
-                item = copy.deepcopy(col)
+                item = col.clone()
                 item.relabel_aliases(change_map)
                 self.select.append(item)
         self.select_fields = rhs.select_fields[:]
