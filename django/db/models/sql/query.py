@@ -509,7 +509,7 @@ class Query(object):
         # Now relabel a copy of the rhs where-clause and add it to the current
         # one.
         if rhs.where:
-            w = where.clone()
+            w = rhs.where.clone()
             w.relabel_aliases(change_map)
             if not self.where:
                 # Since 'self' matches everything, add an explicit "include
