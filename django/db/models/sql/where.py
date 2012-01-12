@@ -263,6 +263,9 @@ class EverythingNode(object):
     def relabel_aliases(self, change_map, node=None):
         return
 
+    def clone(self):
+        return self
+
 class NothingNode(object):
     """
     A node that matches nothing.
@@ -273,6 +276,9 @@ class NothingNode(object):
     def relabel_aliases(self, change_map, node=None):
         return
 
+    def clone(self):
+        return self
+
 class ExtraWhere(object):
     def __init__(self, sqls, params):
         self.sqls = sqls
@@ -280,6 +286,9 @@ class ExtraWhere(object):
 
     def as_sql(self, qn=None, connection=None):
         return " AND ".join(self.sqls), tuple(self.params or ())
+
+    def clone(self):
+        return self
 
 class Constraint(object):
     """
@@ -345,3 +354,6 @@ class Constraint(object):
     def relabel_aliases(self, change_map):
         if self.alias in change_map:
             self.alias = change_map[self.alias]
+
+    def clone(self):
+        return Constraint(self.alias, self.col, self.field)

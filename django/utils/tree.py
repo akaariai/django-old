@@ -45,6 +45,25 @@ class Node(object):
         return obj
     _new_instance = classmethod(_new_instance)
 
+    def clone(self):
+        """
+        Creates a clone of the tree. Must only be called on root nodes (nodes
+        with empty subtree_parents).
+        """
+        assert not self.subtree_parents, '.clone() can only be called on root nodes'
+        clone = self.__class__._new_instance(
+            children=[], connector=self.connector, negated=self.negated)
+        for child in self.children:
+            # A pretty bad abstraction leak: the "tuple" child is a special
+            # child type used in querysets. Querysets should instead define
+            # a leafnode which does the two lines below the check. (TODO).
+            if isinstance(child, tuple):
+                clone.children.append(
+                    (child[0].clone(), child[1], child[2], child[3]))
+            else:
+                clone.children.append(child.clone())
+        return clone
+
     def __str__(self):
         if self.negated:
             return '(NOT (%s: %s))' % (self.connector, ', '.join([str(c) for c
