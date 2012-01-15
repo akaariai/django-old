@@ -24,6 +24,8 @@ def _get_all_permissions(opts):
 def create_permissions(app, created_models, verbosity, **kwargs):
     from django.contrib.contenttypes.models import ContentType
 
+    if ContentType not in created_models:
+        return
     app_models = get_models(app)
 
     # This will hold the permissions we're looking for as
@@ -51,8 +53,6 @@ def create_permissions(app, created_models, verbosity, **kwargs):
         for ctype, (codename, name) in searched_perms
         if (ctype.pk, codename) not in all_perms
     ]
-    if kwargs['skip_tables'] and objs:
-        print 'gotta create objs %d' % len(objs)
     auth_app.Permission.objects.bulk_create(objs)
     if verbosity >= 2:
         for obj in objs:

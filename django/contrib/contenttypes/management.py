@@ -7,6 +7,8 @@ def update_contenttypes(app, created_models, verbosity=2, **kwargs):
     Creates content types for models in the given app, removing any model
     entries that no longer have a matching model class.
     """
+    if ContentType not in created_models:
+        return
     ContentType.objects.clear_cache()
     app_models = get_models(app)
     if not app_models:
@@ -37,8 +39,6 @@ def update_contenttypes(app, created_models, verbosity=2, **kwargs):
         for (model_name, model) in app_models.iteritems()
         if model_name not in content_types
     ]
-    if kwargs['skip_tables'] and to_create:
-       print "gotta create %s" % len(to_create)
     cts = ContentType.objects.bulk_create(to_create)
     if verbosity >= 2:
         for ct in cts:

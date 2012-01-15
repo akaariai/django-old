@@ -887,7 +887,7 @@ class BaseDatabaseIntrospection(object):
         cursor = self.connection.cursor()
         return self.get_table_list(cursor)
 
-    def django_table_names(self, only_existing=False):
+    def django_table_names(self, only_existing=False, only_tables=None):
         """
         Returns a list of all table names that have associated Django models and
         are in INSTALLED_APPS.
@@ -912,6 +912,8 @@ class BaseDatabaseIntrospection(object):
                 for t in tables
                 if self.table_name_converter(t) in existing_tables
             ]
+        if only_tables is not None:
+            tables = [t for t in tables if t in only_tables]
         return tables
 
     def installed_models(self, tables):
@@ -928,10 +930,9 @@ class BaseDatabaseIntrospection(object):
             if self.table_name_converter(m._meta.db_table) in tables
         ])
 
-    def sequence_list(self):
+    def sequence_list(self, only_tables=None):
         "Returns a list of information about all DB sequences for all models in all apps."
         from django.db import models, router
-
         apps = models.get_apps()
         sequence_list = []
 
@@ -951,6 +952,8 @@ class BaseDatabaseIntrospection(object):
                     # we don't need to reset the sequence.
                     if f.rel.through is None:
                         sequence_list.append({'table': f.m2m_db_table(), 'column': None})
+        if only_tables is not None:
+            sequence_list = [d for d in sequence_list if d['table'] in only_tables]
 
         return sequence_list
 

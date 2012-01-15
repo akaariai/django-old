@@ -5,7 +5,7 @@ from django.db import connections, router, transaction, models, DEFAULT_DB_ALIAS
 from django.core.management import call_command
 from django.core.management.base import NoArgsCommand, CommandError
 from django.core.management.color import no_style
-from django.core.management.sql import sql_flush, emit_post_sync_signal
+from django.core.management.sql import sql_flush, emit_post_sync_signal, expand_cascades
 from django.utils.importlib import import_module
 
 
@@ -16,10 +16,8 @@ class Command(NoArgsCommand):
         make_option('--database', action='store', dest='database',
             default=DEFAULT_DB_ALIAS, help='Nominates a database to flush. '
                 'Defaults to the "default" database.'),
-        make_option('--skipsequences', action='store_false', dest='skip-sequences', default=False,
-            help='Skip sequence reset'),
-        make_option('--skiptables', action='store', dest='skip-tables', default=None,
-            help='A space separated list of tables to skip'),
+        make_option('--onlychanged', action='store_false', dest='onlychanged', default=False,
+            help='Internal command used by testing framework (flushed tables only for changed models)'),
     )
     help = ('Returns the database to the state it was in immediately after '
            'syncdb was executed. This means that all data will be removed '
@@ -31,12 +29,12 @@ class Command(NoArgsCommand):
         connection = connections[db]
         verbosity = int(options.get('verbosity'))
         interactive = options.get('interactive')
-        skip_sequences = options.get('skipsequences')
-        skip_tables = options.get('skiptables')
-        if skip_tables:
-            skip_tables = set(skip_tables.split(' '))
-        print skip_tables, skip_sequences
-
+        onlychanged = options.get('onlychanged')
+        changed_models = None
+        if onlychanged:
+            from django.db.models.sql import subqueries
+            changed_models = subqueries.changed_models
+            changed_models = expand_cascades(changed_models)
         self.style = no_style()
 
         # Import the 'management' module within each installed app, to register
@@ -48,7 +46,7 @@ class Command(NoArgsCommand):
                 pass
 
         sql_list = sql_flush(self.style, connection, only_django=True,
-                             skip_sequences=skip_sequences, skip_tables=skip_tables)
+                             only_models=changed_models)
 
         if interactive:
             confirm = raw_input("""You have requested a flush of the database.
@@ -84,12 +82,16 @@ The full error: %s""" % (connection.settings_dict['NAME'], e))
                     m for m in models.get_models(app, include_auto_created=True)
                     if router.allow_syncdb(db, m)
                 ])
-            emit_post_sync_signal(set(all_models), verbosity, interactive, db, skip_tables=skip_tables)
+            if changed_models is not None:
+                all_models = [m for m in all_models if m in changed_models]
+            emit_post_sync_signal(set(all_models), verbosity, interactive, db)
 
             # Reinstall the initial_data fixture.
             kwargs = options.copy()
             kwargs['database'] = db
             call_command('loaddata', 'initial_data', **kwargs)
-
+            if onlychanged:
+                from django.db.models.sql import subqueries
+                subqueries.changed_models = set()
         else:
             print "Flush cancelled."

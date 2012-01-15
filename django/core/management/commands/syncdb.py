@@ -22,7 +22,6 @@ class Command(NoArgsCommand):
     help = "Create the database tables for all apps in INSTALLED_APPS whose tables haven't already been created."
 
     def handle_noargs(self, **options):
-
         verbosity = int(options.get('verbosity'))
         interactive = options.get('interactive')
         show_traceback = options.get('traceback')
@@ -107,7 +106,7 @@ class Command(NoArgsCommand):
 
         # Send the post_syncdb signal, so individual apps can do whatever they need
         # to do at this point.
-        emit_post_sync_signal(created_models, verbosity, interactive, db, skip_tables=set())
+        emit_post_sync_signal(created_models, verbosity, interactive, db)
 
         # The connection may have been closed by a syncdb handler.
         cursor = connection.cursor()
@@ -162,3 +161,5 @@ class Command(NoArgsCommand):
         if load_initial_data:
             from django.core.management import call_command
             call_command('loaddata', 'initial_data', verbosity=verbosity, database=db)
+        from django.db.models.sql import subqueries
+        subqueries.changed_models = set()

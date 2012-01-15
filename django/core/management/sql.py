@@ -106,26 +106,22 @@ def sql_reset(app, style, connection):
     )
     return sql_delete(app, style, connection) + sql_all(app, style, connection)
 
-def sql_flush(style, connection, only_django=False, skip_sequences=False,
-              skip_tables=None):
+def sql_flush(style, connection, only_django=False, only_models=None):
     """
     Returns a list of the SQL statements used to flush the database.
 
     If only_django is True, then only table names that have associated Django
     models and are in INSTALLED_APPS will be included.
     """
-    assert skip_tables is None or skip_sequences
-    if skip_tables is None:
-        skip_tables = set()
-    if only_django:
-        tables = connection.introspection.django_table_names(only_existing=True)
+    only_tables = only_models is not None and set([m._meta.db_table for m in only_models]) or None
+    if only_django or only_tables is not None:
+        tables = connection.introspection.django_table_names(only_existing=True,
+                                                             only_tables=only_tables)
     else:
         tables = connection.introspection.table_names()
-    tables = [t for t in tables if t not in skip_tables]
  
     statements = connection.ops.sql_flush(
-        style, tables,
-        not skip_sequences and connection.introspection.sequence_list() or []
+        style, tables, connection.introspection.sequence_list(only_tables=only_tables)
     )
     return statements
 
@@ -185,7 +181,7 @@ def custom_sql_for_model(model, style, connection):
     return output
 
 
-def emit_post_sync_signal(created_models, verbosity, interactive, db, skip_tables):
+def emit_post_sync_signal(created_models, verbosity, interactive, db):
     # Emit the post_sync signal for every application.
     for app in models.get_apps():
         app_name = app.__name__.split('.')[-2]
@@ -193,4 +189,26 @@ def emit_post_sync_signal(created_models, verbosity, interactive, db, skip_table
             print "Running post-sync handlers for application", app_name
         models.signals.post_syncdb.send(sender=app, app=app,
             created_models=created_models, verbosity=verbosity,
-            interactive=interactive, db=db, skip_tables=skip_tables)
+            interactive=interactive, db=db)
+
+def expand_cascades(model_list):
+    expanded_set = set()
+    for model in model_list:
+        _expand_model(model, expanded_set)
+    print expanded_set
+    return expanded_set
+
+def _expand_model(model, expanded_set):
+    if model in expanded_set:
+        return
+    expanded_set.add(model)
+    for parent_model in model._meta.parents:
+        _expand_model(parent_model, expanded_set)
+    for related in model._meta.get_all_related_objects(include_hidden=True):
+        _expand_model(related.model, expanded_set)
+    # handle GFKs
+    for relation in model._meta.many_to_many:
+        if not relation.rel.through:
+            _expand_model(relation.model, expanded_set)
+    return
+

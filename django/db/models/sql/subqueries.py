@@ -13,6 +13,8 @@ from django.db.models.sql.where import AND, Constraint
 __all__ = ['DeleteQuery', 'UpdateQuery', 'InsertQuery', 'DateQuery',
         'AggregateQuery']
 
+changed_models = set()
+
 class DeleteQuery(Query):
     """
     Delete queries are done through this class, since they are more constrained
@@ -22,6 +24,7 @@ class DeleteQuery(Query):
     compiler = 'SQLDeleteCompiler'
 
     def do_query(self, table, where, using):
+        changed_models.add(self.model)
         self.tables = [table]
         self.where = where
         self.get_compiler(using).execute_sql(None)
@@ -69,6 +72,7 @@ class UpdateQuery(Query):
 
 
     def update_batch(self, pk_list, values, using):
+        changed_models.add(self.model)
         pk_field = self.model._meta.pk
         self.add_update_values(values)
         for offset in range(0, len(pk_list), GET_ITERATOR_CHUNK_SIZE):
@@ -136,6 +140,7 @@ class InsertQuery(Query):
 
     def __init__(self, *args, **kwargs):
         super(InsertQuery, self).__init__(*args, **kwargs)
+        changed_models.add(self.model)
         self.fields = []
         self.objs = []
 
