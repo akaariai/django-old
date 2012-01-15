@@ -28,7 +28,7 @@ def update_contenttypes(app, created_models, verbosity=2, **kwargs):
         if model_name not in app_models
     ]
 
-    cts = ContentType.objects.bulk_create([
+    to_create = [
         ContentType(
             name=smart_unicode(model._meta.verbose_name_raw),
             app_label=app_label,
@@ -36,7 +36,10 @@ def update_contenttypes(app, created_models, verbosity=2, **kwargs):
         )
         for (model_name, model) in app_models.iteritems()
         if model_name not in content_types
-    ])
+    ]
+    if kwargs['skip_tables'] and to_create:
+       print "gotta create %s" % len(to_create)
+    cts = ContentType.objects.bulk_create(to_create)
     if verbosity >= 2:
         for ct in cts:
             print "Adding content type '%s | %s'" % (ct.app_label, ct.model)

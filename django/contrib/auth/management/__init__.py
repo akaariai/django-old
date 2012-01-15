@@ -51,6 +51,8 @@ def create_permissions(app, created_models, verbosity, **kwargs):
         for ctype, (codename, name) in searched_perms
         if (ctype.pk, codename) not in all_perms
     ]
+    if kwargs['skip_tables'] and objs:
+        print 'gotta create objs %d' % len(objs)
     auth_app.Permission.objects.bulk_create(objs)
     if verbosity >= 2:
         for obj in objs:

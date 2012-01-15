@@ -16,8 +16,10 @@ class Command(NoArgsCommand):
         make_option('--database', action='store', dest='database',
             default=DEFAULT_DB_ALIAS, help='Nominates a database to flush. '
                 'Defaults to the "default" database.'),
-        make_option('--skip-sequences', action='store_false', dest='skip-sequences', default=False,
+        make_option('--skipsequences', action='store_false', dest='skip-sequences', default=False,
             help='Skip sequence reset'),
+        make_option('--skiptables', action='store', dest='skip-tables', default=None,
+            help='A space separated list of tables to skip'),
     )
     help = ('Returns the database to the state it was in immediately after '
            'syncdb was executed. This means that all data will be removed '
@@ -29,7 +31,11 @@ class Command(NoArgsCommand):
         connection = connections[db]
         verbosity = int(options.get('verbosity'))
         interactive = options.get('interactive')
-        skip_sequences = options.get('skip_sequences')
+        skip_sequences = options.get('skipsequences')
+        skip_tables = options.get('skiptables')
+        if skip_tables:
+            skip_tables = set(skip_tables.split(' '))
+        print skip_tables, skip_sequences
 
         self.style = no_style()
 
@@ -42,7 +48,7 @@ class Command(NoArgsCommand):
                 pass
 
         sql_list = sql_flush(self.style, connection, only_django=True,
-                             skip_sequences=skip_sequences)
+                             skip_sequences=skip_sequences, skip_tables=skip_tables)
 
         if interactive:
             confirm = raw_input("""You have requested a flush of the database.
@@ -78,7 +84,7 @@ The full error: %s""" % (connection.settings_dict['NAME'], e))
                     m for m in models.get_models(app, include_auto_created=True)
                     if router.allow_syncdb(db, m)
                 ])
-            emit_post_sync_signal(set(all_models), verbosity, interactive, db)
+            emit_post_sync_signal(set(all_models), verbosity, interactive, db, skip_tables=skip_tables)
 
             # Reinstall the initial_data fixture.
             kwargs = options.copy()

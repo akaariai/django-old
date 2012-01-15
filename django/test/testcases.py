@@ -377,7 +377,7 @@ class TransactionTestCase(SimpleTestCase):
             databases = [DEFAULT_DB_ALIAS]
         for db in databases:
             call_command('flush', verbosity=0, interactive=False, database=db,
-                         skip_sequences=True)
+                         skipsequences=True, skiptables='django_content_type auth_permission')
 
             if hasattr(self, 'fixtures'):
                 # We have to use this slightly awkward syntax due to the fact

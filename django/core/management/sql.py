@@ -106,17 +106,23 @@ def sql_reset(app, style, connection):
     )
     return sql_delete(app, style, connection) + sql_all(app, style, connection)
 
-def sql_flush(style, connection, only_django=False, skip_sequences=False):
+def sql_flush(style, connection, only_django=False, skip_sequences=False,
+              skip_tables=None):
     """
     Returns a list of the SQL statements used to flush the database.
 
     If only_django is True, then only table names that have associated Django
     models and are in INSTALLED_APPS will be included.
     """
+    assert skip_tables is None or skip_sequences
+    if skip_tables is None:
+        skip_tables = set()
     if only_django:
         tables = connection.introspection.django_table_names(only_existing=True)
     else:
         tables = connection.introspection.table_names()
+    tables = [t for t in tables if t not in skip_tables]
+ 
     statements = connection.ops.sql_flush(
         style, tables,
         not skip_sequences and connection.introspection.sequence_list() or []
@@ -179,7 +185,7 @@ def custom_sql_for_model(model, style, connection):
     return output
 
 
-def emit_post_sync_signal(created_models, verbosity, interactive, db):
+def emit_post_sync_signal(created_models, verbosity, interactive, db, skip_tables):
     # Emit the post_sync signal for every application.
     for app in models.get_apps():
         app_name = app.__name__.split('.')[-2]
@@ -187,4 +193,4 @@ def emit_post_sync_signal(created_models, verbosity, interactive, db):
             print "Running post-sync handlers for application", app_name
         models.signals.post_syncdb.send(sender=app, app=app,
             created_models=created_models, verbosity=verbosity,
-            interactive=interactive, db=db)
+            interactive=interactive, db=db, skip_tables=skip_tables)

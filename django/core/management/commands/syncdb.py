@@ -107,7 +107,7 @@ class Command(NoArgsCommand):
 
         # Send the post_syncdb signal, so individual apps can do whatever they need
         # to do at this point.
-        emit_post_sync_signal(created_models, verbosity, interactive, db)
+        emit_post_sync_signal(created_models, verbosity, interactive, db, skip_tables=set())
 
         # The connection may have been closed by a syncdb handler.
         cursor = connection.cursor()
