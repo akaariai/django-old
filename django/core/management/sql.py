@@ -195,7 +195,6 @@ def expand_cascades(model_list):
     expanded_set = set()
     for model in model_list:
         _expand_model(model, expanded_set)
-    print expanded_set
     return expanded_set
 
 def _expand_model(model, expanded_set):
@@ -210,5 +209,3 @@ def _expand_model(model, expanded_set):
     for relation in model._meta.many_to_many:
         if not relation.rel.through:
             _expand_model(relation.model, expanded_set)
-    return
-
