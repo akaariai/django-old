@@ -19,6 +19,8 @@ def is_password_usable(encoded):
     return (encoded is not None and encoded != UNUSABLE_PASSWORD)
 
 
+from datetime import datetime
+cumulative = datetime.now() - datetime.now()
 def check_password(password, encoded, setter=None, preferred='default'):
     """
     Returns a boolean of whether the raw password matches the three
@@ -27,6 +29,7 @@ def check_password(password, encoded, setter=None, preferred='default'):
     If setter is specified, it'll be called when you need to
     regenerate the password.
     """
+    start = datetime.now()
     if not password or not is_password_usable(encoded):
         return False
 
@@ -45,6 +48,9 @@ def check_password(password, encoded, setter=None, preferred='default'):
     is_correct = hasher.verify(password, encoded)
     if setter and is_correct and must_update:
         setter(raw_password)
+    global cumulative
+    cumulative += datetime.now() - start
+    print cumulative
     return is_correct
 
 

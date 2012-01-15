@@ -137,7 +137,7 @@ class BaseCommand(object):
 
     # Configuration shortcuts that alter various logic.
     can_import_settings = True
-    requires_model_validation = True
+    requires_model_validation = False
     output_transaction = False  # Whether to wrap the output in a "BEGIN; COMMIT;"
 
     def __init__(self):
