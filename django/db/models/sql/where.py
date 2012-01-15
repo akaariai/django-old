@@ -251,6 +251,23 @@ class WhereNode(tree.Node):
                 # Check if the query value also requires relabelling
                 if hasattr(child[3], 'relabel_aliases'):
                     child[3].relabel_aliases(change_map)
+    
+    def clone(self):
+        """
+        Creates a clone of the tree. Must only be called on root nodes (nodes
+        with empty subtree_parents). Childs must be either Contraint, lookup,
+        value tuples, or objects supporting .clone().
+        """
+        assert not self.subtree_parents, '.clone() can only be called on root nodes'
+        clone = self.__class__._new_instance(
+            children=[], connector=self.connector, negated=self.negated)
+        for child in self.children:
+            if isinstance(child, tuple):
+                clone.children.append(
+                    (child[0].clone(), child[1], child[2], child[3]))
+            else:
+                clone.children.append(child.clone())
+        return clone
 
 class EverythingNode(object):
     """
@@ -263,6 +280,9 @@ class EverythingNode(object):
     def relabel_aliases(self, change_map, node=None):
         return
 
+    def clone(self):
+        return self
+
 class NothingNode(object):
     """
     A node that matches nothing.
@@ -273,6 +293,9 @@ class NothingNode(object):
     def relabel_aliases(self, change_map, node=None):
         return
 
+    def clone(self):
+        return self
+
 class ExtraWhere(object):
     def __init__(self, sqls, params):
         self.sqls = sqls
@@ -280,6 +303,9 @@ class ExtraWhere(object):
 
     def as_sql(self, qn=None, connection=None):
         return " AND ".join(self.sqls), tuple(self.params or ())
+
+    def clone(self):
+        return self
 
 class Constraint(object):
     """
@@ -345,3 +371,6 @@ class Constraint(object):
     def relabel_aliases(self, change_map):
         if self.alias in change_map:
             self.alias = change_map[self.alias]
+
+    def clone(self):
+        return Constraint(self.alias, self.col, self.field)
