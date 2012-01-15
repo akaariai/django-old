@@ -16,6 +16,8 @@ class Command(NoArgsCommand):
         make_option('--database', action='store', dest='database',
             default=DEFAULT_DB_ALIAS, help='Nominates a database to flush. '
                 'Defaults to the "default" database.'),
+        make_option('--skip-sequences', action='store_false', dest='skip-sequences', default=False,
+            help='Skip sequence reset'),
     )
     help = ('Returns the database to the state it was in immediately after '
            'syncdb was executed. This means that all data will be removed '
@@ -27,6 +29,7 @@ class Command(NoArgsCommand):
         connection = connections[db]
         verbosity = int(options.get('verbosity'))
         interactive = options.get('interactive')
+        skip_sequences = options.get('skip_sequences')
 
         self.style = no_style()
 
@@ -38,7 +41,8 @@ class Command(NoArgsCommand):
             except ImportError:
                 pass
 
-        sql_list = sql_flush(self.style, connection, only_django=True)
+        sql_list = sql_flush(self.style, connection, only_django=True,
+                             skip_sequences=skip_sequences)
 
         if interactive:
             confirm = raw_input("""You have requested a flush of the database.
