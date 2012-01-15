@@ -33,6 +33,7 @@ class Command(BaseCommand):
             default=DEFAULT_DB_ALIAS, help='Nominates a specific database to load '
                 'fixtures into. Defaults to the "default" database.'),
     )
+    fixture_cache = None
 
     def handle(self, *fixture_labels, **options):
         using = options.get('database')
@@ -48,6 +49,7 @@ class Command(BaseCommand):
 
         verbosity = int(options.get('verbosity'))
         show_traceback = options.get('traceback')
+        use_cache = options.get('use_cache')
 
         # commit is a stealth option - it isn't really useful as
         # a command line option, but it can be useful when invoking
@@ -138,12 +140,28 @@ class Command(BaseCommand):
                             transaction.leave_transaction_management(using=using)
                         return
 
+                    is_abs = False
                     if os.path.isabs(fixture_name):
+                        is_abs = True
                         fixture_dirs = [fixture_name]
                     else:
                         fixture_dirs = app_fixtures + list(settings.FIXTURE_DIRS) + ['']
-
                     for fixture_dir in fixture_dirs:
+                        if not is_abs:
+                            if not os.path.exists(fixture_dir):
+                                continue
+                            possible_files = os.listdir(fixture_dir)
+                            possible_dir = False
+                            for possible_file in possible_files:
+                                if possible_file.startswith(fixture_name):
+                                    possible_dir = True
+                            if not possible_dir:
+                                if verbosity >= 2:
+                                    # Now, this is just stupid...
+                                    for format in formats:
+                                        self.stdout.write("No %s fixture '%s' in %s.\n" % \
+                                            (format, fixture_name, humanize(fixture_dir)))
+                                continue
                         if verbosity >= 2:
                             self.stdout.write("Checking %s for fixtures...\n" % humanize(fixture_dir))
 
