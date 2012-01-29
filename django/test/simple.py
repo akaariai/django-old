@@ -312,17 +312,13 @@ class DjangoTestSuiteRunner(object):
         return unittest.TextTestRunner(verbosity=self.verbosity, failfast=self.failfast).run(suite)
 
     def teardown_databases(self, old_config, **kwargs):
-        from django.db import connections
+        """
+        Destroys all the non-mirror databases
+        """
         old_names, mirrors = old_config
-        # Point all the mirrors back to the originals
-        for alias, old_name in mirrors:
-            connections[alias].settings_dict['NAME'] = old_name
-        # Destroy all the non-mirror databases
         for connection, old_name, destroy in old_names:
             if destroy:
                 connection.creation.destroy_test_db(old_name, self.verbosity)
-            else:
-                connection.settings_dict['NAME'] = old_name
 
     def teardown_test_environment(self, **kwargs):
         unittest.removeHandler()

@@ -5,6 +5,8 @@ from django.conf import settings
 
 # The prefix to put on the default database name when creating
 # the test database.
+from django.db.utils import load_backend
+
 TEST_DATABASE_PREFIX = 'test_'
 
 class BaseDatabaseCreation(object):
@@ -320,9 +322,19 @@ class BaseDatabaseCreation(object):
             if verbosity >= 2:
                 test_db_repr = " ('%s')" % test_database_name
             print "Destroying test database for alias '%s'%s..." % (self.connection.alias, test_db_repr)
-        self.connection.settings_dict['NAME'] = old_database_name
 
-        self._destroy_test_db(test_database_name, verbosity)
+        # Temporarily use a new connection and a copy of the settings dict.
+        # This prevents the production database from being exposed to potential
+        # child threads while the test database is being destroyed. Refs
+        # #10868.
+        settings_dict = self.connection.settings_dict.copy()
+        settings_dict['NAME'] = old_database_name
+        backend = load_backend(settings_dict['ENGINE'])
+        new_conn = backend.DatabaseWrapper(
+                              settings_dict,
+                              alias='__destroy_test_db__',
+                              allow_thread_sharing=False)
+        new_conn.creation._destroy_test_db(test_database_name, verbosity)
 
     def _destroy_test_db(self, test_database_name, verbosity):
         "Internal implementation - remove the test db tables."
