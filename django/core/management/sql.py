@@ -63,7 +63,10 @@ def sql_delete(app, style, connection):
 
     # Figure out which tables already exist
     if cursor:
-        table_names = connection.introspection.get_table_list(cursor)
+        visible_names = connection.introspection.get_visible_tables_list(cursor)
+        qualified_names = connection.introspection.get_qualified_tables_list(cursor)
+        table_names = [(None, t) for t in visible_names]
+        table_names.extend([qualified_names])
     else:
         table_names = []
 

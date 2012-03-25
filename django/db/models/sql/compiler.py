@@ -27,7 +27,7 @@ class SQLCompiler(object):
         # cleaned. We are not using a clone() of the query here.
         """
         if not self.query.tables:
-            self.query.join((None, self.query.model._meta.db_table, None, None))
+            self.query.join((None, self.query.model._meta.qualified_name, None, None))
         if (not self.query.select and self.query.default_cols and not
                 self.query.included_inherited_models):
             self.query.setup_inherited_models()
@@ -281,8 +281,10 @@ class SQLCompiler(object):
                         alias = start_alias
                     else:
                         link_field = opts.get_ancestor_link(model)
-                        alias = self.query.join((start_alias, model._meta.db_table,
-                                link_field.column, model._meta.pk.column))
+                        alias = self.query.join((start_alias,
+                                                 model._meta.qualified_name,
+                                                 link_field.column,
+                                                 model._meta.pk.column))
                     seen[model] = alias
             else:
                 # If we're starting from the base model of the queryset, the
@@ -546,7 +548,7 @@ class SQLCompiler(object):
             if (len(self.query.model._meta.fields) == len(self.query.select) and
                 self.connection.features.allows_group_by_pk):
                 self.query.group_by = [
-                    (self.query.model._meta.db_table, self.query.model._meta.pk.column)
+                    (self.query.model._meta.qualified_name, self.query.model._meta.pk.column)
                 ]
 
             group_by = self.query.group_by or []
@@ -614,7 +616,7 @@ class SQLCompiler(object):
             # what "used" specifies).
             avoid = avoid_set.copy()
             dupe_set = orig_dupe_set.copy()
-            table = f.rel.to._meta.db_table
+            table = f.rel.to._meta.qualified_name
             promote = nullable or f.null
             if model:
                 int_opts = opts
@@ -635,7 +637,7 @@ class SQLCompiler(object):
                                 ()))
                         dupe_set.add((opts, lhs_col))
                     int_opts = int_model._meta
-                    alias = self.query.join((alias, int_opts.db_table, lhs_col,
+                    alias = self.query.join((alias, int_opts.qualified_name, lhs_col,
                             int_opts.pk.column), exclusions=used,
                             promote=promote)
                     alias_chain.append(alias)
@@ -687,7 +689,7 @@ class SQLCompiler(object):
                 # what "used" specifies).
                 avoid = avoid_set.copy()
                 dupe_set = orig_dupe_set.copy()
-                table = model._meta.db_table
+                table = model._meta.qualified_name
 
                 int_opts = opts
                 alias = root_alias
@@ -710,7 +712,7 @@ class SQLCompiler(object):
                             dupe_set.add((opts, lhs_col))
                         int_opts = int_model._meta
                         alias = self.query.join(
-                            (alias, int_opts.db_table, lhs_col, int_opts.pk.column),
+                            (alias, int_opts.qualified_name, lhs_col, int_opts.pk.column),
                             exclusions=used, promote=True, reuse=used
                         )
                         alias_chain.append(alias)
@@ -775,7 +777,7 @@ class SQLCompiler(object):
                         # into `resolve_columns` because it wasn't selected.
                         only_load = self.deferred_to_columns()
                         if only_load:
-                            db_table = self.query.model._meta.db_table
+                            db_table = self.query.model._meta.qualified_name
                             fields = [f for f in fields if db_table in only_load and
                                       f.column in only_load[db_table]]
                     row = self.resolve_columns(row, fields)
@@ -856,8 +858,9 @@ class SQLInsertCompiler(SQLCompiler):
         # We don't need quote_name_unless_alias() here, since these are all
         # going to be column names (so we can avoid the extra overhead).
         qn = self.connection.ops.quote_name
+        qn3 = self.connection.ops.qualified_name
         opts = self.query.model._meta
-        result = ['INSERT INTO %s' % qn(opts.db_table)]
+        result = ['INSERT INTO %s' % qn3(opts.qualified_name)]
 
         has_fields = bool(self.query.fields)
         fields = self.query.fields if has_fields else [opts.pk]
@@ -887,7 +890,7 @@ class SQLInsertCompiler(SQLCompiler):
             ]
         if self.return_id and self.connection.features.can_return_id_from_insert:
             params = params[0]
-            col = "%s.%s" % (qn(opts.db_table), qn(opts.pk.column))
+            col = "%s.%s" % (qn3(opts.qualified_name), qn(opts.pk.column))
             result.append("VALUES (%s)" % ", ".join(placeholders[0]))
             r_fmt, r_params = self.connection.ops.return_insert_id()
             result.append(r_fmt % col)
@@ -913,7 +916,7 @@ class SQLInsertCompiler(SQLCompiler):
         if self.connection.features.can_return_id_from_insert:
             return self.connection.ops.fetch_returned_insert_id(cursor)
         return self.connection.ops.last_insert_id(cursor,
-                self.query.model._meta.db_table, self.query.model._meta.pk.column)
+                self.query.model._meta.qualified_name, self.query.model._meta.pk.column)
 
 
 class SQLDeleteCompiler(SQLCompiler):

@@ -57,7 +57,9 @@ class Command(NoArgsCommand):
         cursor = connection.cursor()
 
         # Get a list of already installed *models* so that references work right.
-        tables = connection.introspection.table_names()
+        nonqualified_tables = connection.introspection.table_names()
+        qualified_tables = connection.introspection.qualified_names()
+        tables = [(None, t) for t in nonqualified_tables] + qualified_tables
         seen_models = connection.introspection.installed_models(tables)
         created_models = set()
         pending_references = {}
@@ -83,12 +85,19 @@ class Command(NoArgsCommand):
         # Create the tables for each model
         if verbosity >= 1:
             print "Creating tables ..."
+        seen_schemas = set(connection.introspection.schema_names())
+
         for app_name, model_list in manifest.items():
             for model in model_list:
                 # Create the model's database table, if it doesn't already exist.
                 if verbosity >= 3:
                     print "Processing %s.%s model" % (app_name, model._meta.object_name)
-                sql, references = connection.creation.sql_create_model(model, self.style, seen_models)
+                sql = []
+                if model._meta.db_schema and model._meta.db_schema not in seen_schemas:
+                    sql.append(connection.creation.sql_create_schema(model._meta.db_schema, self.style))
+                    seen_schemas.add(model._meta.db_schema)
+                table_sql, references = connection.creation.sql_create_model(model, self.style, seen_models)
+                sql.extend(table_sql)
                 seen_models.add(model)
                 created_models.add(model)
                 for refto, refs in references.items():
@@ -97,10 +106,13 @@ class Command(NoArgsCommand):
                         sql.extend(connection.creation.sql_for_pending_references(refto, self.style, pending_references))
                 sql.extend(connection.creation.sql_for_pending_references(model, self.style, pending_references))
                 if verbosity >= 1 and sql:
-                    print "Creating table %s" % model._meta.db_table
+                    if model._meta.db_schema:
+                        print "Creating table %s.%s" % model._meta.qualified_name
+                    else:
+                        print "Creating table %s" % model._meta.db_table
                 for statement in sql:
                     cursor.execute(statement)
-                tables.append(connection.introspection.table_name_converter(model._meta.db_table))
+                tables.append(connection.introspection.table_name_converter(model._meta.qualified_name))
 
 
         transaction.commit_unless_managed(using=db)

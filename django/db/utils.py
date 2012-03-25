@@ -78,7 +78,7 @@ class ConnectionHandler(object):
             conn['ENGINE'] = 'django.db.backends.dummy'
         conn.setdefault('OPTIONS', {})
         conn.setdefault('TIME_ZONE', 'UTC' if settings.USE_TZ else settings.TIME_ZONE)
-        for setting in ['NAME', 'USER', 'PASSWORD', 'HOST', 'PORT']:
+        for setting in ['NAME', 'USER', 'PASSWORD', 'HOST', 'PORT', 'SCHEMA']:
             conn.setdefault(setting, '')
         for setting in ['TEST_CHARSET', 'TEST_COLLATION', 'TEST_NAME', 'TEST_MIRROR']:
             conn.setdefault(setting, None)

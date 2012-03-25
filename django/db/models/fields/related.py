@@ -1112,8 +1112,12 @@ class ManyToManyField(RelatedField, Field):
             through=kwargs.pop('through', None))
 
         self.db_table = kwargs.pop('db_table', None)
+        self.db_schema = kwargs.pop('db_schema', None)
         if kwargs['rel'].through is not None:
             assert self.db_table is None, "Cannot specify a db_table if an intermediary model is used."
+            assert self.db_schema is None, "Cannot specify a db_schema if an intermediary model is used."
+        # TODO: by default use the containing model's db_schema
+            
 
         Field.__init__(self, **kwargs)
 
@@ -1132,6 +1136,19 @@ class ManyToManyField(RelatedField, Field):
         else:
             return util.truncate_name('%s_%s' % (opts.db_table, self.name),
                                       connection.ops.max_name_length())
+
+    def _get_m2m_db_schema(self, opts):
+        "Function that can be curried to provide the m2m schema name for this relation"
+        if self.rel.through is not None and self.rel.through._meta.db_schema:
+            return self.rel.through._meta.db_schema
+        assert False
+        return self.db_schema
+
+    def _get_m2m_qualified_name(self, opts):
+        "Function that can be curried to provide the qualified m2m table name for this relation"
+        schema = self._get_m2m_db_schema(opts)
+        table = self._get_m2m_db_table(opts)
+        return (schema, table)
 
     def _get_m2m_attr(self, related, attr):
         "Function that can be curried to provide the source accessor or DB column name for the m2m table"
@@ -1203,6 +1220,9 @@ class ManyToManyField(RelatedField, Field):
 
         # Set up the accessor for the m2m table name for the relation
         self.m2m_db_table = curry(self._get_m2m_db_table, cls._meta)
+        self.m2m_db_schema = curry(self._get_m2m_db_schema, cls._meta)
+        self.m2m_qualified_name = curry(self._get_m2m_qualified_name,
+                                        cls._meta)
 
         # Populate some necessary rel arguments so that cross-app relations
         # work correctly.
@@ -1214,7 +1234,7 @@ class ManyToManyField(RelatedField, Field):
         if isinstance(self.rel.to, basestring):
             target = self.rel.to
         else:
-            target = self.rel.to._meta.db_table
+            target = self.rel.to._meta.qualified_name
         cls._meta.duplicate_targets[self.column] = (target, "m2m")
 
     def contribute_to_related_class(self, cls, related):

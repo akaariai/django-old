@@ -461,7 +461,7 @@ class BaseDatabaseOperations(object):
         self.connection = connection
         self._cache = None
 
-    def autoinc_sql(self, table, column):
+    def autoinc_sql(self, qualified_name, column):
         """
         Returns any SQL needed to support auto-incrementing primary keys, or
         None if no SQL is necessary.
@@ -513,7 +513,7 @@ class BaseDatabaseOperations(object):
         """
         return "DROP CONSTRAINT"
 
-    def drop_sequence_sql(self, table):
+    def drop_sequence_sql(self, qualified_name):
         """
         Returns any SQL necessary to drop the sequence for the given table.
         Returns None if no SQL is necessary.
@@ -594,7 +594,7 @@ class BaseDatabaseOperations(object):
 
         return smart_unicode(sql) % u_params
 
-    def last_insert_id(self, cursor, table_name, pk_name):
+    def last_insert_id(self, cursor, qualified_name, pk_name):
         """
         Given a cursor object that has just performed an INSERT statement into
         a table that has an auto-incrementing ID, returns the newly created ID.
@@ -672,6 +672,21 @@ class BaseDatabaseOperations(object):
         not quote the given name if it's already been quoted.
         """
         raise NotImplementedError()
+
+    def qualified_name(self, qualified_name):
+        """
+        Prepares and formats the table name if necessary.
+        Just returns quoted db_table if not supported.
+        """
+        return self.quote_name(qualified_name[1])
+
+    def prep_db_index(self, db_schema, db_index):
+        """
+        Prepares and formats the table index name if necessary.
+        Just returns quoted db_index if not supported.
+        """
+        assert False
+        return self.quote_name(db_index)
 
     def random_function_sql(self):
         """
@@ -891,14 +906,38 @@ class BaseDatabaseIntrospection(object):
         return name
 
     def table_names(self):
-        "Returns a list of names of all tables that exist in the database."
+        "Returns a list of names of all tables that are visible in the database."
         cursor = self.connection.cursor()
-        return self.get_table_list(cursor)
+        return self.get_visible_tables_list(cursor)
+
+    def qualified_names(self):
+        """
+        Returns qualified table names for all schemas in the current database.
+        """
+        cursor = self.connection.cursor()
+        return self.get_qualified_tables_list(cursor)
+
+    def get_schema_list(self, cursor):
+        "Returns a list of schemas that exist in the database"
+        return []
+    
+    def get_qualified_tables_list(self, cursor):
+        """
+        Returns schema qualified names (as pair schema, tbl_name) of all
+        tables in the current database.
+        """
+        return []
+
+    def schema_names(self):
+        "Returns a list of schemas that exist in the database"
+        cursor = self.connection.cursor()
+        return self.get_schema_list(cursor)
 
     def django_table_names(self, only_existing=False):
         """
-        Returns a list of all table names that have associated Django models and
-        are in INSTALLED_APPS.
+        Returns a list of all table's qualified names that have associated Django
+        models and are in INSTALLED_APPS. The qualified names will be pairs of
+        (schema, table).
 
         If only_existing is True, the resulting list will only include the tables
         that actually exist in the database.
@@ -911,16 +950,25 @@ class BaseDatabaseIntrospection(object):
                     continue
                 if not router.allow_syncdb(self.connection.alias, model):
                     continue
-                tables.add(model._meta.db_table)
-                tables.update([f.m2m_db_table() for f in model._meta.local_many_to_many])
+                tables.add(model._meta.qualified_name)
+                tables.update([f.m2m_qualfiied_name() for f in model._meta.local_many_to_many])
         tables = list(tables)
         if only_existing:
-            existing_tables = self.table_names()
+            qualified_tables = [t for t in tables if t[0]]
+            nonqualified_tables = [t for t in tables if not t[0]]
+            existing_nonqualified_tables = self.table_names()
+            existing_qualified_tables = self.qualified_names()
+
             tables = [
                 t
-                for t in tables
-                if self.table_name_converter(t) in existing_tables
+                for t in nonqualified_tables
+                if self.table_name_converter(t) in existing_nonqualified_tables
             ]
+            tables.extend([
+                t
+                for t in qualified_tables
+                if self.table_name_converter(t) in existing_qualified_tables
+            ])
         return tables
 
     def installed_models(self, tables):
@@ -934,7 +982,7 @@ class BaseDatabaseIntrospection(object):
         tables = map(self.table_name_converter, tables)
         return set([
             m for m in all_models
-            if self.table_name_converter(m._meta.db_table) in tables
+            if self.table_name_converter(m._meta.qualified_name) in tables
         ])
 
     def sequence_list(self):
@@ -952,14 +1000,16 @@ class BaseDatabaseIntrospection(object):
                     continue
                 for f in model._meta.local_fields:
                     if isinstance(f, models.AutoField):
-                        sequence_list.append({'table': model._meta.db_table, 'column': f.column})
+                        sequence_list.append({'table': model._meta.db_table, 'column': f.column,
+                                              'schema': model._meta.db_schema})
                         break # Only one AutoField is allowed per model, so don't bother continuing.
 
                 for f in model._meta.local_many_to_many:
                     # If this is an m2m using an intermediate table,
                     # we don't need to reset the sequence.
                     if f.rel.through is None:
-                        sequence_list.append({'table': f.m2m_db_table(), 'column': None})
+                        sequence_list.append({'table': f.m2m_db_table(), 'column': None,
+                                              'schema': f.m2m_db_schema()})
 
         return sequence_list
 
