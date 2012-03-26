@@ -955,11 +955,11 @@ class BaseDatabaseIntrospection(object):
         tables = list(tables)
         if only_existing:
             qualified_tables = [t for t in tables if t[0]]
-            nonqualified_tables = [t for t in tables if not t[0]]
+            nonqualified_tables = [t[1] for t in tables if not t[0]]
             existing_nonqualified_tables = self.table_names()
             existing_qualified_tables = self.qualified_names()
             tables = [
-                t
+                (None, t)
                 for t in nonqualified_tables
                 if self.table_name_converter(t) in existing_nonqualified_tables
             ]
