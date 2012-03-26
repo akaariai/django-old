@@ -507,7 +507,9 @@ class Queries1Tests(BaseQuerysetTest):
         self.assertEqual(d, {'a': u'one', 'b': u'two'})
 
         # Order by the number of tags attached to an item.
-        l = Item.objects.extra(select={'count': 'select count(*) from queries_item_tags where queries_item_tags.item_id = queries_item.id'}).order_by('-count')
+        l = Item.objects.extra(select={
+            'count':'select count(*) from queries_item_tags where queries_item_tags.item_id = T1.id'
+        }).order_by('-count')
         self.assertEqual([o.count for o in l], [2, 2, 1, 0])
 
     def test_ticket6154(self):
@@ -579,7 +581,7 @@ class Queries1Tests(BaseQuerysetTest):
         # Make sure semi-deprecated ordering by related models syntax still
         # works.
         self.assertValueQuerysetEqual(
-            Item.objects.values('note__note').order_by('queries_note.note', 'id'),
+            Item.objects.values('note__note').order_by('T2.note', 'id'),
             [{'note__note': u'n2'}, {'note__note': u'n3'}, {'note__note': u'n3'}, {'note__note': u'n3'}]
         )
 

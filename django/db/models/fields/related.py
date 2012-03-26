@@ -237,8 +237,6 @@ class SingleRelatedObjectDescriptor(object):
         return self.related.model._base_manager.using(db)
 
     def get_prefetch_query_set(self, instances):
-        vals = set(instance._get_pk_val() for instance in instances)
-        params = {'%s__pk__in' % self.related.field.name: vals}
         return (self.get_query_set(instance=instances[0]),
                 attrgetter(self.related.field.attname),
                 lambda obj: obj._get_pk_val(),
@@ -559,11 +557,12 @@ def create_many_related_manager(superclass, rel):
             # dealing with PK values.
             fk = self.through._meta.get_field(self.source_field_name)
             source_col = fk.column
-            join_table = self.through._meta.db_table
+            join_table = self.through._meta.qualified_name
+            join_alias = qs.query.table_alias(join_table)[0]
             connection = connections[db]
             qn = connection.ops.quote_name
             qs = qs.extra(select={'_prefetch_related_val':
-                                      '%s.%s' % (qn(join_table), qn(source_col))})
+                                      '%s.%s' % (join_alias, qn(source_col))})
             select_attname = fk.rel.get_related_field().get_attname()
             return (qs,
                     attrgetter('_prefetch_related_val'),
@@ -1141,7 +1140,6 @@ class ManyToManyField(RelatedField, Field):
         "Function that can be curried to provide the m2m schema name for this relation"
         if self.rel.through is not None and self.rel.through._meta.db_schema:
             return self.rel.through._meta.db_schema
-        assert False
         return self.db_schema
 
     def _get_m2m_qualified_name(self, opts):

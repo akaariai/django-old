@@ -951,14 +951,13 @@ class BaseDatabaseIntrospection(object):
                 if not router.allow_syncdb(self.connection.alias, model):
                     continue
                 tables.add(model._meta.qualified_name)
-                tables.update([f.m2m_qualfiied_name() for f in model._meta.local_many_to_many])
+                tables.update([f.m2m_qualified_name() for f in model._meta.local_many_to_many])
         tables = list(tables)
         if only_existing:
             qualified_tables = [t for t in tables if t[0]]
             nonqualified_tables = [t for t in tables if not t[0]]
             existing_nonqualified_tables = self.table_names()
             existing_qualified_tables = self.qualified_names()
-
             tables = [
                 t
                 for t in nonqualified_tables

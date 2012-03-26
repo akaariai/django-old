@@ -103,8 +103,14 @@ class Query(object):
         self.alias_refcount = SortedDict()
         self.alias_map = {}     # Maps alias to join information
         self.table_map = {}     # Maps table names to list of aliases.
+        # join_map maps a join indentifier (lhs_table, table, lhs_col, col)
+        # into the alias given for the joined table.
         self.join_map = {}
-        self.rev_join_map = {}  # Reverse of join_map.
+        # rev_join_map is used when combining queries: there is a need to
+        # redo the joins of the right-hand-side (rhs) query, and rev_join_map
+        # tells us what the join originally was for each alias in the rhs
+        # query.
+        self.rev_join_map = {}
         self.quote_cache = {}
         self.default_cols = True
         self.default_ordering = True
@@ -464,6 +470,7 @@ class Query(object):
         used = set()
         conjunction = (connector == AND)
         first = True
+        # Redo the join in the rhs query.
         for alias in rhs.tables:
             if not rhs.alias_refcount[alias]:
                 # An unused alias.
@@ -473,6 +480,8 @@ class Query(object):
             # If the left side of the join was already relabeled, use the
             # updated alias.
             lhs = change_map.get(lhs, lhs)
+            if isinstance(lhs, tuple):
+                lhs = self.table_alias(lhs)[0]
             new_alias = self.join((lhs, table, lhs_col, col),
                     (conjunction and not first), used, promote, not conjunction)
             used.add(new_alias)
@@ -646,7 +655,7 @@ class Query(object):
             target[table].add(field.column)
 
 
-    def table_alias(self, table_name, create=False):
+    def table_alias(self, qualified_name, create=False):
         """
         Returns a table alias for the given table_name and whether this is a
         new alias or not.
@@ -654,7 +663,7 @@ class Query(object):
         If 'create' is true, a new alias is always created. Otherwise, the
         most recently created alias for the table (if one exists) is reused.
         """
-        current = self.table_map.get(table_name)
+        current = self.table_map.get(qualified_name)
         if not create and current:
             alias = current[0]
             self.alias_refcount[alias] += 1
@@ -665,9 +674,8 @@ class Query(object):
             alias = '%s%d' % (self.alias_prefix, len(self.alias_map) + 1)
             current.append(alias)
         else:
-            # The first occurence of a table uses the table name directly.
-            alias = table_name
-            self.table_map[alias] = [alias]
+            alias = '%s%d' % (self.alias_prefix, len(self.alias_map) + 1)
+            self.table_map[qualified_name] = [alias]
         self.alias_refcount[alias] = 1
         self.tables.append(alias)
         return alias, True
@@ -853,9 +861,8 @@ class Query(object):
         """
         Returns an alias for the join in 'connection', either reusing an
         existing alias for that join or creating a new one. 'connection' is a
-        tuple (lhs, table, lhs_col, col) where 'lhs' is either an existing
-        table alias or a table name. The join correspods to the SQL equivalent
-        of::
+        tuple (lhs, table, lhs_col, col) where 'lhs' is an existing table
+        alias. The join correspods to the SQL equivalent of::
 
             lhs.lhs_col = table.col
 
@@ -882,6 +889,7 @@ class Query(object):
         is a candidate for promotion (to "left outer") when combining querysets.
         """
         lhs, table, lhs_col, col = connection
+        assert not isinstance(lhs, tuple), 'lhs is qualified_name, but it must be an alias'
         if lhs in self.alias_map:
             lhs_table = self.alias_map[lhs][TABLE_NAME]
         else:

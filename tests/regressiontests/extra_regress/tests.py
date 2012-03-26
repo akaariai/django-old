@@ -40,9 +40,10 @@ class ExtraRegressTests(TestCase):
         self.assertEqual(rm2.base.pk, rm.pk)
 
         # Queryset to match most recent revision:
+        
         qs = RevisionableModel.objects.extra(
-                where=["%(table)s.id IN (SELECT MAX(rev.id) FROM %(table)s rev GROUP BY rev.base_id)" % {
-                    'table': RevisionableModel._meta.db_table,
+                where=["%(alias)s.id IN (SELECT MAX(rev.id) FROM %(table)s rev GROUP BY rev.base_id)" % {
+                    'alias': 'T1', 'table': RevisionableModel._meta.db_table,
                 }]
         )
 

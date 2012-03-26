@@ -508,6 +508,7 @@ class SQLCompiler(object):
         result = []
         qn = self.quote_name_unless_alias
         qn2 = self.connection.ops.quote_name
+        qn3 = self.connection.ops.qualified_name
         first = True
         for alias in self.query.tables:
             if not self.query.alias_refcount[alias]:
@@ -518,23 +519,23 @@ class SQLCompiler(object):
                 # Extra tables can end up in self.tables, but not in the
                 # alias_map if they aren't in a join. That's OK. We skip them.
                 continue
-            alias_str = (alias != name and ' %s' % alias or '')
+            alias_str = ' %s' % alias
             if join_type and not first:
                 result.append('%s %s%s ON (%s.%s = %s.%s)'
-                        % (join_type, qn(name), alias_str, qn(lhs),
+                        % (join_type, qn3(name), alias_str, qn(lhs),
                            qn2(lhs_col), qn(alias), qn2(col)))
             else:
                 connector = not first and ', ' or ''
-                result.append('%s%s%s' % (connector, qn(name), alias_str))
+                result.append('%s%s%s' % (connector, qn3(name), alias_str))
             first = False
         for t in self.query.extra_tables:
-            alias, unused = self.query.table_alias(t)
+            alias, _ = self.query.table_alias(t)
             # Only add the alias if it's not already present (the table_alias()
             # calls increments the refcount, so an alias refcount of one means
             # this is the only reference.
             if alias not in self.query.alias_map or self.query.alias_refcount[alias] == 1:
                 connector = not first and ', ' or ''
-                result.append('%s%s' % (connector, qn(alias)))
+                result.append('%s%s' % (connector, qn(t)))
                 first = False
         return result, []
 
@@ -654,6 +655,8 @@ class SQLCompiler(object):
                 if dedupe:
                     dupe_set.add((opts, f.column))
 
+            if isinstance(alias, tuple):
+                alias = self.query.table_alias(alias)[0]
             alias = self.query.join((alias, table, f.column,
                     f.rel.get_related_field().column),
                     exclusions=used.union(avoid), promote=promote)
@@ -723,6 +726,8 @@ class SQLCompiler(object):
                         avoid.update(self.query.dupe_avoidance.get((id(opts), f.column), ()))
                         if dedupe:
                             dupe_set.add((opts, f.column))
+                if isinstance(alias, tuple):
+                    alias = self.query.table_alias(alias)[0]
                 alias = self.query.join(
                     (alias, table, f.rel.get_related_field().column, f.column),
                     exclusions=used.union(avoid),
@@ -928,7 +933,8 @@ class SQLDeleteCompiler(SQLCompiler):
         assert len(self.query.tables) == 1, \
                 "Can only delete from one table at a time."
         qn = self.quote_name_unless_alias
-        result = ['DELETE FROM %s' % qn(self.query.tables[0])]
+        qn3 = self.connection.ops.qualified_name
+        result = ['DELETE FROM %s' % qn3(self.query.tables[0])]
         where, params = self.query.where.as_sql(qn=qn, connection=self.connection)
         result.append('WHERE %s' % where)
         return ' '.join(result), tuple(params)
@@ -942,9 +948,11 @@ class SQLUpdateCompiler(SQLCompiler):
         self.pre_sql_setup()
         if not self.query.values:
             return '', ()
-        table = self.query.tables[0]
+        table = self.query.model._meta.qualified_name
+        alias = ' ' + self.query.tables[0]
         qn = self.quote_name_unless_alias
-        result = ['UPDATE %s' % qn(table)]
+        qn3 = self.connection.ops.qualified_name
+        result = ['UPDATE %s%s' % (qn3(table), alias)]
         result.append('SET')
         values, update_params = [], []
         for field, model, val in self.query.values:

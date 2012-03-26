@@ -79,8 +79,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         """
         if qualified_name[0]:
             return "%s.%s" % (self.quote_name(qualified_name[0]),
-                              self.qutoe_name(qualified_name[1]))
-
+                              self.quote_name(qualified_name[1]))
+        else:
+            return self.quote_name(qualified_name[1])
 
     def set_time_zone_sql(self):
         return "SET TIME ZONE %s"

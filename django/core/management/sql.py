@@ -78,7 +78,7 @@ def sql_delete(app, style, connection):
     references_to_delete = {}
     app_models = models.get_models(app, include_auto_created=True)
     for model in app_models:
-        if cursor and connection.introspection.table_name_converter(model._meta.db_table) in table_names:
+        if cursor and connection.introspection.table_name_converter(model._meta.qualified_name) in table_names:
             # The table exists, so it needs to be dropped
             opts = model._meta
             for f in opts.local_fields:
@@ -88,7 +88,7 @@ def sql_delete(app, style, connection):
             to_delete.add(model)
 
     for model in app_models:
-        if connection.introspection.table_name_converter(model._meta.db_table) in table_names:
+        if connection.introspection.table_name_converter(model._meta.qualified_name) in table_names:
             output.extend(connection.creation.sql_destroy_model(model, references_to_delete, style))
 
     # Close database connection explicitly, in case this output is being piped
@@ -158,7 +158,7 @@ def custom_sql_for_model(model, style, connection):
     if opts.managed:
         post_sql_fields = [f for f in opts.local_fields if hasattr(f, 'post_create_sql')]
         for f in post_sql_fields:
-            output.extend(f.post_create_sql(style, model._meta.db_table))
+            output.extend(f.post_create_sql(style, model._meta.qualified_name))
 
     # Some backends can't execute more than one SQL statement at a time,
     # so split into separate statements.

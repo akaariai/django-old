@@ -169,7 +169,7 @@ class ManyToOneTests(TestCase):
         # The automatically joined table has a predictable name.
         self.assertQuerysetEqual(
             Article.objects.filter(reporter__first_name__exact='John').extra(
-                where=["many_to_one_reporter.last_name='Smith'"]),
+                where=["T2.last_name='Smith'"]),
             [
                 "<Article: John's second story>",
                 "<Article: This is a test>",
@@ -177,7 +177,7 @@ class ManyToOneTests(TestCase):
         # ... and should work fine with the unicode that comes out of forms.Form.cleaned_data
         self.assertQuerysetEqual(
             Article.objects.filter(reporter__first_name__exact='John'
-                                  ).extra(where=["many_to_one_reporter.last_name='%s'" % u'Smith']),
+                                  ).extra(where=["T2.last_name='%s'" % u'Smith']),
             [
                 "<Article: John's second story>",
                 "<Article: This is a test>",

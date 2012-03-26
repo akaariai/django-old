@@ -117,7 +117,7 @@ class Options(object):
             # TODO: Using connection.ops is wrong: in multidb setup this doesn't work
             # correctly except as different connections have different max_name_length.
             self.db_table = truncate_name(self.db_table, connection.ops.max_name_length())
-        self.qualified_name = (self.db_scehma, self.db_table)
+        self.qualified_name = (self.db_schema, self.db_table)
 
     def _prepare(self, model):
         if self.order_with_respect_to:

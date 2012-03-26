@@ -169,13 +169,14 @@ class LongNameTest(TestCase):
         VLM = models.VeryLongModelNameZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
         VLM_m2m = VLM.m2m_also_quite_long_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.through
         tables = [
-            VLM._meta.db_table,
-            VLM_m2m._meta.db_table,
+            ('', VLM._meta.db_table),
+            ('', VLM_m2m._meta.db_table),
         ]
         sequences = [
             {
                 'column': VLM._meta.pk.column,
-                'table': VLM._meta.db_table
+                'table': VLM._meta.db_table,
+                'schema': '',
             },
         ]
         cursor = connection.cursor()

@@ -65,25 +65,25 @@ class IntrospectionTests(TestCase):
         self.assertIs(type(tl), list)
 
     def test_installed_models(self):
-        tables = [Article._meta.db_table, Reporter._meta.db_table]
+        tables = [(None, Article._meta.db_table), (None, Reporter._meta.db_table)]
         models = connection.introspection.installed_models(tables)
         self.assertEqual(models, set([Article, Reporter]))
 
     def test_sequence_list(self):
         sequences = connection.introspection.sequence_list()
-        expected = {'table': Reporter._meta.db_table, 'column': 'id'}
+        expected = {'table': Reporter._meta.db_table, 'column': 'id', 'schema': None}
         self.assertTrue(expected in sequences,
                      'Reporter sequence not found in sequence_list()')
 
     def test_get_table_description_names(self):
         cursor = connection.cursor()
-        desc = connection.introspection.get_table_description(cursor, Reporter._meta.db_table)
+        desc = connection.introspection.get_table_description(cursor, Reporter._meta.qualified_name)
         self.assertEqual([r[0] for r in desc],
                          [f.column for f in Reporter._meta.fields])
 
     def test_get_table_description_types(self):
         cursor = connection.cursor()
-        desc = connection.introspection.get_table_description(cursor, Reporter._meta.db_table)
+        desc = connection.introspection.get_table_description(cursor, Reporter._meta.qualified_name)
         self.assertEqual(
             [datatype(r[1], r) for r in desc],
             ['IntegerField', 'CharField', 'CharField', 'CharField', 'BigIntegerField']
@@ -95,7 +95,7 @@ class IntrospectionTests(TestCase):
     @skipIfDBFeature('interprets_empty_strings_as_nulls')
     def test_get_table_description_nullable(self):
         cursor = connection.cursor()
-        desc = connection.introspection.get_table_description(cursor, Reporter._meta.db_table)
+        desc = connection.introspection.get_table_description(cursor, Reporter._meta.qualified_name)
         self.assertEqual(
             [r[6] for r in desc],
             [False, False, False, False, True]
@@ -106,34 +106,41 @@ class IntrospectionTests(TestCase):
     def test_postgresql_real_type(self):
         cursor = connection.cursor()
         cursor.execute("CREATE TABLE django_ixn_real_test_table (number REAL);")
-        desc = connection.introspection.get_table_description(cursor, 'django_ixn_real_test_table')
+        desc = connection.introspection.get_table_description(cursor, (None, 'django_ixn_real_test_table'))
         cursor.execute('DROP TABLE django_ixn_real_test_table;')
         self.assertEqual(datatype(desc[0][1], desc[0]), 'FloatField')
 
     def test_get_relations(self):
         cursor = connection.cursor()
-        relations = connection.introspection.get_relations(cursor, Article._meta.db_table)
+        relations = connection.introspection.get_relations(cursor, Article._meta.qualified_name)
 
         # Older versions of MySQL don't have the chops to report on this stuff,
         # so just skip it if no relations come back. If they do, though, we
         # should test that the response is correct.
         if relations:
             # That's {field_index: (field_index_other_table, other_table)}
-            self.assertEqual(relations, {3: (0, Reporter._meta.db_table)})
+            # We have a small problem here: the Reporter model is installed
+            # into the default schema (qualified_name[0] == None). The
+            # relation introspection is going to see it in that schema, but we
+            # do not know what that schema is. So, test everything except the
+            # schema.
+            self.assertTrue(3 in relations)
+            relations[3] = (relations[3][0], (None, relations[3][1][1]))
+            self.assertEqual(relations, {3: (0, Reporter._meta.qualified_name)})
 
     def test_get_key_columns(self):
         cursor = connection.cursor()
-        key_columns = connection.introspection.get_key_columns(cursor, Article._meta.db_table)
-        self.assertEqual(key_columns, [(u'reporter_id', Reporter._meta.db_table, u'id')])
+        key_columns = connection.introspection.get_key_columns(cursor, Article._meta.qualified_name)
+        self.assertEqual(key_columns, [(u'reporter_id', Reporter._meta.qualified_name, u'id')])
 
     def test_get_primary_key_column(self):
         cursor = connection.cursor()
-        primary_key_column = connection.introspection.get_primary_key_column(cursor, Article._meta.db_table)
+        primary_key_column = connection.introspection.get_primary_key_column(cursor, Article._meta.qualified_name)
         self.assertEqual(primary_key_column, u'id')
 
     def test_get_indexes(self):
         cursor = connection.cursor()
-        indexes = connection.introspection.get_indexes(cursor, Article._meta.db_table)
+        indexes = connection.introspection.get_indexes(cursor, Article._meta.qualified_name)
         self.assertEqual(indexes['reporter_id'], {'unique': False, 'primary_key': False})
 
 

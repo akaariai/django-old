@@ -27,7 +27,7 @@ class Command(NoArgsCommand):
     def handle_inspection(self, options):
         connection = connections[options.get('database')]
 
-        table2model = lambda table_name: table_name.title().replace('_', '').replace(' ', '').replace('-', '')
+        table2model = lambda table_name: table_name[1].title().replace('_', '').replace(' ', '').replace('-', '')
 
         cursor = connection.cursor()
         yield "# This is an auto-generated Django model module."
@@ -41,7 +41,8 @@ class Command(NoArgsCommand):
         yield ''
         yield 'from %s import models' % self.db_module
         yield ''
-        for table_name in connection.introspection.get_table_list(cursor):
+        for table_name in connection.introspection.get_visible_tables_list(cursor):
+            table_name = '', table_name
             yield 'class %s(models.Model):' % table2model(table_name)
             try:
                 relations = connection.introspection.get_relations(cursor, table_name)
@@ -169,5 +170,6 @@ class Command(NoArgsCommand):
         to the given database table name.
         """
         return ['    class Meta:',
-                '        db_table = %r' % table_name,
+                '        db_table = %r' % table_name[1],
+                '        db_schema = %r' % table_name[0],
                 '']

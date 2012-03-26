@@ -74,8 +74,8 @@ class Command(NoArgsCommand):
         def model_installed(model):
             opts = model._meta
             converter = connection.introspection.table_name_converter
-            return not ((converter(opts.db_table) in tables) or
-                (opts.auto_created and converter(opts.auto_created._meta.db_table) in tables))
+            return not ((converter(opts.qualified_name) in tables) or
+                (opts.auto_created and converter(opts.auto_created._meta.qualified_name) in tables))
 
         manifest = SortedDict(
             (app_name, filter(model_installed, model_list))

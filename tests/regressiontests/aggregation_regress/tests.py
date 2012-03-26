@@ -70,7 +70,7 @@ class AggregationTests(TestCase):
         shortest_book_sql = """
         SELECT name
         FROM aggregation_regress_book b
-        WHERE b.publisher_id = aggregation_regress_publisher.id
+        WHERE b.publisher_id = T1.id
         ORDER BY b.pages
         LIMIT 1
         """

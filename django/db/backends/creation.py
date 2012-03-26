@@ -154,7 +154,7 @@ class BaseDatabaseCreation(object):
                 r_qname = rel_opts.qualified_name
                 r_col = f.column
                 table = opts.db_table
-                qname = opts.qualfied_name
+                qname = opts.qualified_name
                 col = opts.get_field(f.rel.field_name).column
                 # For MySQL, r_name must be unique in the first 64 characters.
                 # So we are careful with character usage here.
@@ -278,9 +278,9 @@ class BaseDatabaseCreation(object):
             print "Creating test database for alias '%s'%s..." % (
                 self.connection.alias, test_db_repr)
 
-        self._create_test_db(verbosity, autoclobber)
         schema_apps = self._get_app_with_schemas()
         schemas = self._get_schemas(schema_apps)
+        self._create_test_db(verbosity, autoclobber, schemas)
 
         self.connection.close()
         self.connection.settings_dict["NAME"] = test_database_name
