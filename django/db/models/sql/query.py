@@ -470,7 +470,7 @@ class Query(object):
         used = set()
         conjunction = (connector == AND)
         first = True
-        # Redo the join in the rhs query.
+        # Redo the joins in the rhs query.
         for alias in rhs.tables:
             if not rhs.alias_refcount[alias]:
                 # An unused alias.
