@@ -409,6 +409,8 @@ class BaseDatabaseFeatures(object):
     # Support for the DISTINCT ON clause
     can_distinct_on_fields = False
 
+    supports_schemas = False
+
     def __init__(self, connection):
         self.connection = connection
 

@@ -24,11 +24,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
     def get_schema_list(self, cursor):
         cursor.execute("""
-            SELECT DISTINCT n.nspname
-            FROM pg_catalog.pg_class c
-            LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relkind IN ('r', 'v', '')
-            AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema')""")
+            SELECT n.nspname
+            FROM pg_catalog.pg_namespace n
+            WHERE n.nspname != 'information_schema' OR n.nspname not like 'pg_%s'""")
         return [row[0] for row in cursor.fetchall()]
         
     def get_visible_tables_list(self, cursor):

@@ -1075,6 +1075,7 @@ def create_many_to_many_intermediary_model(field, klass):
         to = to.lower()
     meta = type('Meta', (object,), {
         'db_table': field._get_m2m_db_table(klass._meta),
+        'db_schema': field._get_m2m_db_schema(klass._meta),
         'managed': managed,
         'auto_created': klass,
         'app_label': klass._meta.app_label,
@@ -1140,7 +1141,11 @@ class ManyToManyField(RelatedField, Field):
         "Function that can be curried to provide the m2m schema name for this relation"
         if self.rel.through is not None and self.rel.through._meta.db_schema:
             return self.rel.through._meta.db_schema
-        return self.db_schema
+        elif self.db_schema:
+            return self.db_schema
+        else:
+            return opts.db_schema
+
 
     def _get_m2m_qualified_name(self, opts):
         "Function that can be curried to provide the qualified m2m table name for this relation"

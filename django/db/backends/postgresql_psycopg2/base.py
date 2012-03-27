@@ -83,6 +83,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_bulk_insert = True
     supports_tablespaces = True
     can_distinct_on_fields = True
+    supports_schemas = True
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'postgresql'

@@ -463,24 +463,39 @@ class Query(object):
         change_map = {}
         used = set()
         conjunction = (connector == AND)
-        first = True
-        # Redo the joins in the rhs query.
-        for alias, join in rhs.alias_map.items():
-            (table, alias, join_type, lhs, lhs_col, col, nullable) = join
+        # Redo the joins in the rhs query. Note that it is important to
+        # advance in the same order the joins were originally created. This
+        # order is guaranteed by using rhs.tables.
+        for alias in rhs.tables:
             if not rhs.alias_refcount[alias]:
                 # An unused alias.
                 continue
-            promote = join_type == self.LOUTER
-            # If the left side of the join was already relabeled, use the
-            # updated alias.
-            print lhs, table, lhs_col, col
-            lhs = change_map.get(lhs, lhs)
-            new_alias = self.join((lhs, table, lhs_col, col),
-                    (conjunction and not first), used, promote, not conjunction)
+            table, _, join_type, lhs, lhs_col, col, _ = rhs.alias_map[alias]
+            promote = (join_type == self.LOUTER)
+            if not lhs:
+                # If the table is the base table (no lhs == joined to
+                # nothing), then we can start from the existing alias. The base
+                # table must naturally exists in the combined-to query also.
+                new_alias = self.table_alias(table)[0]
+            else:
+                # If the left side of the join was already relabeled, use the
+                # updated alias.
+                lhs = change_map.get(lhs, lhs)
+                # Re-create the join. Note that if we are combining as a
+                # conjunction, then we must create a new join into the
+                # combined query for every existing join in the rhs query.
+                # (reason: WHERE t1.col = 1 and t1.col = 2 does not produce
+                # good results)
+                new_alias = self.join((lhs, table, lhs_col, col),
+                        conjunction, used, promote, not conjunction)
             used.add(new_alias)
             change_map[alias] = new_alias
-            first = False
-
+        """
+        print
+        print 'AFTER:', self.alias_map
+        print
+        print self
+        """
         # So that we don't exclude valid results in an "or" query combination,
         # all joins exclusive to either the lhs or the rhs must be converted
         # to an outer join.

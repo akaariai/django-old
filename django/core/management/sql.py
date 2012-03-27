@@ -119,7 +119,7 @@ def sql_flush(style, connection, only_django=False):
     if only_django:
         tables = connection.introspection.django_table_names(only_existing=True)
     else:
-        tables = connection.introspection.table_names()
+        tables = connection.introspection.table_names().extend(connection.introspection.qualified_names())
     statements = connection.ops.sql_flush(
         style, tables, connection.introspection.sequence_list()
     )

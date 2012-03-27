@@ -347,7 +347,7 @@ class BaseDatabaseCreation(object):
         from django.db import models
         schemas = set()
         for app in apps:
-            app_models = models.get_models(app)
+            app_models = models.get_models(app, include_auto_created=True)
             for model in app_models:
                 schema = model._meta.db_schema
                 if not schema or schema in schemas:
@@ -360,7 +360,7 @@ class BaseDatabaseCreation(object):
         apps = models.get_apps()
         schema_apps = set()
         for app in apps:
-            app_models = models.get_models(app)
+            app_models = models.get_models(app, include_auto_created=True)
             for model in app_models:
                 schema = model._meta.db_schema
                 if not schema or app in schema_apps:

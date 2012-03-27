@@ -96,7 +96,6 @@ class Queries1Tests(BaseQuerysetTest):
             Author.objects.filter(item=self.i3),
             ['<Author: a2>']
         )
-        print (Author.objects.filter(item=self.i2) & Author.objects.filter(item=self.i3)).query
         self.assertQuerysetEqual(
             Author.objects.filter(item=self.i2) & Author.objects.filter(item=self.i3),
             ['<Author: a2>']
