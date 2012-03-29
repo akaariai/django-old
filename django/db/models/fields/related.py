@@ -561,6 +561,10 @@ def create_many_related_manager(superclass, rel):
             join_alias = qs.query.table_alias(join_table)[0]
             connection = connections[db]
             qn = connection.ops.quote_name
+            if isinstance(join_alias, tuple):
+                join_alias = connection.ops.qualified_name(join_alias)
+            else:
+                join_alias = qn(join_alias)
             qs = qs.extra(select={'_prefetch_related_val':
                                       '%s.%s' % (join_alias, qn(source_col))})
             select_attname = fk.rel.get_related_field().get_attname()

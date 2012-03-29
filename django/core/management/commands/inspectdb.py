@@ -42,7 +42,6 @@ class Command(NoArgsCommand):
         yield 'from %s import models' % self.db_module
         yield ''
         for table_name in connection.introspection.get_visible_tables_list(cursor):
-            table_name = '', table_name
             yield 'class %s(models.Model):' % table2model(table_name)
             try:
                 relations = connection.introspection.get_relations(cursor, table_name)
@@ -171,5 +170,5 @@ class Command(NoArgsCommand):
         """
         return ['    class Meta:',
                 '        db_table = %r' % table_name[1],
-                '        db_schema = %r' % table_name[0],
+                '        db_schema = %r' % table_name[0] or 'None',
                 '']

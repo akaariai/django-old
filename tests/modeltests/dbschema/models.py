@@ -1,17 +1,23 @@
 from django.db import models
 
 class SameName1(models.Model):
-    pass
+    txt = models.TextField(null=True)
 
     class Meta:
-        db_table = 'stn'
-        db_schema = 'schema1'
+        db_table = 'stn1'
 
 class SameName2(models.Model):
     fk = models.ForeignKey(SameName1)
 
     class Meta:
-        db_table = 'stn'
+        db_table = 'stn2'
+        db_schema = 'schema1'
+
+class SameName3(models.Model):
+    fk = models.ForeignKey(SameName1)
+
+    class Meta:
+        db_table = 'stn3'
         db_schema = 'schema2'
 
 class M2MTable(models.Model):

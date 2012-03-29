@@ -39,7 +39,7 @@ class IntrospectionTests(TestCase):
     __metaclass__ = IgnoreNotimplementedError
 
     def test_table_names(self):
-        tl = connection.introspection.table_names()
+        tl = [t for _, t in connection.introspection.table_names()]
         self.assertTrue(Reporter._meta.db_table in tl,
                      "'%s' isn't in table_list()." % Reporter._meta.db_table)
         self.assertTrue(Article._meta.db_table in tl,

@@ -139,6 +139,9 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return '"%s"' % name
 
+    def qualified_name(self, name):
+        return self.quote_name(name[1])
+
     def no_limit_value(self):
         return -1
 
@@ -149,7 +152,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         sql = ['%s %s %s;' % \
                 (style.SQL_KEYWORD('DELETE'),
                  style.SQL_KEYWORD('FROM'),
-                 style.SQL_FIELD(self.quote_name(table))
+                 style.SQL_FIELD(self.qualified_name(table))
                  ) for table in tables]
         # Note: No requirement for reset of auto-incremented indices (cf. other
         # sql_flush() implementations). Just return SQL at this point
@@ -295,7 +298,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         cursor = self.cursor()
         if table_names is None:
-            table_names = self.introspection.get_table_list(cursor)
+            table_names = self.introspection.get_visible_tables_list(cursor)
         for table_name in table_names:
             primary_key_column_name = self.introspection.get_primary_key_column(cursor, table_name)
             if not primary_key_column_name:
@@ -307,12 +310,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                     LEFT JOIN `%s` as REFERRED
                     ON (REFERRING.`%s` = REFERRED.`%s`)
                     WHERE REFERRING.`%s` IS NOT NULL AND REFERRED.`%s` IS NULL"""
-                    % (primary_key_column_name, column_name, table_name, referenced_table_name,
+                    % (primary_key_column_name, column_name, table_name[1], referenced_table_name[1],
                     column_name, referenced_column_name, column_name, referenced_column_name))
                 for bad_row in cursor.fetchall():
                     raise utils.IntegrityError("The row in table '%s' with primary key '%s' has an invalid "
                         "foreign key: %s.%s contains a value '%s' that does not have a corresponding value in %s.%s."
-                        % (table_name, bad_row[0], table_name, column_name, bad_row[1],
+                        % (table_name, bad_row[0], table_name[1], column_name, bad_row[1],
                         referenced_table_name, referenced_column_name))
 
     def close(self):

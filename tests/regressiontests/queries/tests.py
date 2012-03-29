@@ -510,7 +510,6 @@ class Queries1Tests(BaseQuerysetTest):
         l = Item.objects.extra(select={
             'count':'select count(*) from queries_item_tags where queries_item_tags.item_id = queries_item.id'
         }).order_by('-count')
-        print l.query
         self.assertEqual([o.count for o in l], [2, 2, 1, 0])
 
     def test_ticket6154(self):

@@ -39,13 +39,17 @@ class DatabaseCreation(BaseDatabaseCreation):
         "SQLite3 doesn't support constraints"
         return []
 
+    def sql_create_schema(self, schema, verbosity):
+        "SQLite3 doesn't support schemas"
+        return
+
     def _get_test_db_name(self):
         test_database_name = self.connection.settings_dict['TEST_NAME']
         if test_database_name and test_database_name != ':memory:':
             return test_database_name
         return ':memory:'
 
-    def _create_test_db(self, verbosity, autoclobber):
+    def _create_test_db(self, verbosity, autoclobber, schemas):
         test_database_name = self._get_test_db_name()
         if test_database_name != ':memory:':
             # Erase the old test database
@@ -64,6 +68,9 @@ class DatabaseCreation(BaseDatabaseCreation):
                     print "Tests cancelled."
                     sys.exit(1)
         return test_database_name
+
+    def _create_test_schemas(self, verbosity, schemas, cursor):
+        return
 
     def _destroy_test_db(self, test_database_name, verbosity):
         if test_database_name and test_database_name != ":memory:":

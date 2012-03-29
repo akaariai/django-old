@@ -120,7 +120,7 @@ class SelectRelatedTests(TestCase):
 
     def test_select_related_with_extra(self):
         s = Species.objects.all().select_related(depth=1)\
-            .extra(select={'a': 'T1.id + 10'})[0]
+            .extra(select={'a': 'select_related_species.id + 10'})[0]
         self.assertEqual(s.id + 10, s.a)
 
     def test_certain_fields(self):

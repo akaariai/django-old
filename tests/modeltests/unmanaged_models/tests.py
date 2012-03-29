@@ -57,5 +57,5 @@ class ManyToManyUnmanagedTests(TestCase):
         An intermediary table between a managed and an unmanaged model should be created.
         """
         table = Managed1._meta.get_field('mm').m2m_db_table()
-        tables = connection.introspection.table_names()
+        tables = [t for _, t in connection.introspection.table_names()]
         self.assertTrue(table in tables, "Table '%s' does not exist." % table)

@@ -59,7 +59,7 @@ class Command(NoArgsCommand):
         # Get a list of already installed *models* so that references work right.
         nonqualified_tables = connection.introspection.table_names()
         qualified_tables = connection.introspection.qualified_names()
-        tables = [(None, t) for t in nonqualified_tables] + qualified_tables
+        tables = [(None, t) for _, t in nonqualified_tables] + qualified_tables
         seen_models = connection.introspection.installed_models(tables)
         created_models = set()
         pending_references = {}
@@ -94,7 +94,9 @@ class Command(NoArgsCommand):
                     print "Processing %s.%s model" % (app_name, model._meta.object_name)
                 sql = []
                 if model._meta.db_schema and model._meta.db_schema not in seen_schemas:
-                    sql.append(connection.creation.sql_create_schema(model._meta.db_schema, self.style))
+                    q = connection.creation.sql_create_schema(model._meta.db_schema, self.style)
+                    if q:
+                        sql.append(q)
                     seen_schemas.add(model._meta.db_schema)
                 table_sql, references = connection.creation.sql_create_model(model, self.style, seen_models)
                 sql.extend(table_sql)

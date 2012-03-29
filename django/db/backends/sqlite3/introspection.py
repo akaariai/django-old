@@ -41,26 +41,27 @@ class FlexibleFieldLookupDict(object):
 class DatabaseIntrospection(BaseDatabaseIntrospection):
     data_types_reverse = FlexibleFieldLookupDict()
 
-    def get_table_list(self, cursor):
-        "Returns a list of table names in the current database."
+    def get_visible_tables_list(self, cursor):
+        "Returns a list of table names in the current database"
         # Skip the sqlite_sequence system table used for autoincrement key
         # generation.
         cursor.execute("""
             SELECT name FROM sqlite_master
             WHERE type='table' AND NOT name='sqlite_sequence'
             ORDER BY name""")
-        return [row[0] for row in cursor.fetchall()]
+        return [(None, row[0]) for row in cursor.fetchall()]
 
-    def get_table_description(self, cursor, table_name):
+    def get_table_description(self, cursor, qualified_name):
         "Returns a description of the table, with the DB-API cursor.description interface."
         return [(info['name'], info['type'], None, None, None, None,
-                 info['null_ok']) for info in self._table_info(cursor, table_name)]
+                 info['null_ok']) for info in self._table_info(cursor, qualified_name[1])]
 
-    def get_relations(self, cursor, table_name):
+    def get_relations(self, cursor, qualified_name):
         """
         Returns a dictionary of {field_index: (field_index_other_table, other_table)}
         representing all relationships to the given table. Indexes are 0-based.
         """
+        table_name = qualified_name[1]
 
         # Dictionary of relations to return
         relations = {}
@@ -98,16 +99,17 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
                 name = other_desc.split(' ', 1)[0].strip('"')
                 if name == column:
-                    relations[field_index] = (other_index, table)
+                    relations[field_index] = (other_index, (None, table))
                     break
 
         return relations
 
-    def get_key_columns(self, cursor, table_name):
+    def get_key_columns(self, cursor, qualified_name):
         """
         Returns a list of (column_name, referenced_table_name, referenced_column_name) for all
         key columns in given table.
         """
+        table_name = qualified_name[1]
         key_columns = []
 
         # Schema for this table
@@ -128,17 +130,20 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 continue
 
             # This will append (column_name, referenced_table_name, referenced_column_name) to key_columns
-            key_columns.append(tuple([s.strip('"') for s in m.groups()]))
+            add = tuple([s.strip('"') for s in m.groups()])
+            add = add[0], (None, add[1]), add[2]
+            key_columns.append(add)
 
         return key_columns
 
-    def get_indexes(self, cursor, table_name):
+    def get_indexes(self, cursor, qualified_name):
         """
         Returns a dictionary of fieldname -> infodict for the given table,
         where each infodict is in the format:
             {'primary_key': boolean representing whether it's the primary key,
              'unique': boolean representing whether it's a unique index}
         """
+        table_name = qualified_name[1]
         indexes = {}
         for info in self._table_info(cursor, table_name):
             indexes[info['name']] = {'primary_key': info['pk'] != 0,
@@ -157,10 +162,11 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             indexes[name]['unique'] = True
         return indexes
 
-    def get_primary_key_column(self, cursor, table_name):
+    def get_primary_key_column(self, cursor, qualified_name):
         """
         Get the column name of the primary key for the given table.
         """
+        table_name = qualified_name[1]
         # Don't use PRAGMA because that causes issues with some transactions
         cursor.execute("SELECT sql FROM sqlite_master WHERE tbl_name = %s AND type = %s", [table_name, "table"])
         results = cursor.fetchone()[0].strip()
@@ -180,3 +186,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                  'null_ok': not field[3],
                  'pk': field[5]     # undocumented
                  } for field in cursor.fetchall()]
+
+    def table_name_converter(self, name):
+        if isinstance(name, tuple):
+            return None, name[1]
+        else:
+            return name

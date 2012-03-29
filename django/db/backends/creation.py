@@ -17,6 +17,7 @@ class BaseDatabaseCreation(object):
     destruction of test databases.
     """
     data_types = {}
+    safe_reuse_schemas = set()
 
     def __init__(self, connection):
         self.connection = connection
@@ -286,8 +287,7 @@ class BaseDatabaseCreation(object):
         self.connection.settings_dict["NAME"] = test_database_name
 
         # Create the test schemas.
-        cursor = self.connection.cursor()
-        self._create_test_schemas(verbosity, schemas, cursor)
+        self._create_test_schemas(verbosity, schemas, autoclobber)
 
         # Confirm the feature set of the test database
         self.connection.features.confirm()
@@ -325,10 +325,32 @@ class BaseDatabaseCreation(object):
 
         return test_database_name
 
-    def _create_test_schemas(self, verbosity, schemas, cursor):
+    def _create_test_schemas(self, verbosity, schemas, autoclobber):
         from django.core.management.color import no_style
         style = no_style()
+        cursor = self.connection.cursor()
+        existing_schemas = self.connection.introspection.get_schema_list(cursor)
+        safe_reuse = self.safe_reuse_schemas
+        conflicts = [s for s in existing_schemas if s in schemas and s not in safe_reuse]
+        if conflicts:
+            print 'The following schemas already exists: %s' % ', '.join(conflicts) 
+            if not autoclobber:
+                confirm = raw_input(
+                    "Type 'yes' if you would like to try deleting these schemas "
+                    "or 'no' to cancel: ")
+            if autoclobber or confirm == 'yes':
+                for schema in conflicts:
+                    if verbosity >= 1:
+                        print "Destroying schema %s" % schema
+                    cursor.execute(self.sql_destroy_schema(schema, style))
+                    existing_schemas.remove(schema)
+            else:
+                print "Tests cancelled."
+                sys.exit(1)
+           
         for schema in schemas:
+            if schema in existing_schemas:
+                continue
             if verbosity >= 1:
                 print "Creating schema %s" % schema
             cursor.execute(self.sql_create_schema(schema, style))

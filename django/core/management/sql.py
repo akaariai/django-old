@@ -63,10 +63,14 @@ def sql_delete(app, style, connection):
 
     # Figure out which tables already exist
     if cursor:
-        visible_names = connection.introspection.get_visible_tables_list(cursor)
-        qualified_names = connection.introspection.get_qualified_tables_list(cursor)
-        table_names = [(None, t) for t in visible_names]
-        table_names.extend([qualified_names])
+        table_names = connection.introspection.get_visible_tables_list(cursor)
+        # Need to convert the always visible names to have no db-schema. The same
+        # tables will also be in the qualified tables list, so the always visible
+        # tables will be in both schema, table and None, table formats. This is
+        # needed as we need to be prepared for both schema-qualified models and
+        # models with schema = None.
+        table_names = [(None, t) for t in table_names]
+        table_names.extend(connection.introspection.get_qualified_tables_list(cursor))
     else:
         table_names = []
 

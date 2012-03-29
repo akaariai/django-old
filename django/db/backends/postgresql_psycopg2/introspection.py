@@ -35,13 +35,13 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         database.
         """
         cursor.execute("""
-            SELECT c.relname
+            SELECT n.nspname, c.relname
             FROM pg_catalog.pg_class c
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v', '')
                 AND n.nspname NOT IN ('pg_catalog', 'pg_toast')
                 AND pg_catalog.pg_table_is_visible(c.oid)""")
-        return [row[0] for row in cursor.fetchall()]
+        return [(row[0], row[1]) for row in cursor.fetchall()]
     
     def get_qualified_tables_list(self, cursor):
         """
@@ -52,7 +52,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             FROM pg_catalog.pg_class c
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v', '')
-                AND n.nspname NOT IN ('pg_catalog', 'pg_toast')""")
+                AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema')""")
         return [(row[0], row[1]) for row in cursor.fetchall()]
 
     def get_table_description(self, cursor, qualified_name):
@@ -69,7 +69,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             cursor.execute("""
                 SELECT column_name, is_nullable
                 FROM information_schema.columns
-                WHERE table_name = %s and table_schema = %s""",
+                WHERE table_schema = %s and table_name = %s""",
                 [qualified_name[0], qualified_name[1]])
         null_map = dict(cursor.fetchall())
         cursor.execute(

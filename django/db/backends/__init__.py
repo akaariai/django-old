@@ -912,6 +912,12 @@ class BaseDatabaseIntrospection(object):
         cursor = self.connection.cursor()
         return self.get_visible_tables_list(cursor)
 
+    def get_visible_tables_list(self, cursoe):
+        """
+        Returns all visible (in "search path") tables from the database.
+        """
+        return []
+
     def qualified_names(self):
         """
         Returns qualified table names for all schemas in the current database.
@@ -957,17 +963,15 @@ class BaseDatabaseIntrospection(object):
         tables = list(tables)
         if only_existing:
             qualified_tables = [t for t in tables if t[0]]
-            nonqualified_tables = [t[1] for t in tables if not t[0]]
-            existing_nonqualified_tables = self.table_names()
-            existing_qualified_tables = self.qualified_names()
+            nonqualified_tables = [t for t in tables if not t[0]]
+            existing_nonqualified_tables = [self.table_name_converter((None, t)) for _, t in self.table_names()]
+            existing_qualified_tables = [self.table_name_converter(t) for t in self.qualified_names()]
             tables = [
-                (None, t)
-                for t in nonqualified_tables
+                t for t in nonqualified_tables
                 if self.table_name_converter(t) in existing_nonqualified_tables
             ]
             tables.extend([
-                t
-                for t in qualified_tables
+                t for t in qualified_tables
                 if self.table_name_converter(t) in existing_qualified_tables
             ])
         return tables

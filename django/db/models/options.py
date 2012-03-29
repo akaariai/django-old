@@ -26,7 +26,7 @@ class Options(object):
         self.module_name, self.verbose_name = None, None
         self.verbose_name_plural = None
         self.db_table = ''
-        self.db_schema = None
+        self.db_schema = settings.DEFAULT_SCHEMA
         self.qualified_name = (self.db_schema, self.db_table)
         self.ordering = []
         self.unique_together =  []

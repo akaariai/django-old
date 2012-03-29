@@ -1,5 +1,6 @@
 from itertools import izip
 
+from django.conf import settings
 from django.core.exceptions import FieldError
 from django.db import transaction
 from django.db.backends.util import truncate_name
@@ -510,17 +511,13 @@ class SQLCompiler(object):
         result = []
         qn = self.quote_name_unless_alias
         qn2 = self.connection.ops.quote_name
-        qn3 = self.connection.ops.qualified_name
         first = True
         for alias in self.query.tables:
-            if not self.query.alias_refcount[alias]:
+            # Extra tables can end up in self.tables, but not in the
+            # alias_map if they aren't in a join. That's OK. We skip them.
+            if not self.query.alias_refcount[alias] or alias not in self.query.alias_map:
                 continue
-            try:
-                name, alias, join_type, lhs, lhs_col, col, nullable = self.query.alias_map[alias]
-            except KeyError:
-                # Extra tables can end up in self.tables, but not in the
-                # alias_map if they aren't in a join. That's OK. We skip them.
-                continue
+            name, alias, join_type, lhs, lhs_col, col, nullable = self.query.alias_map[alias]
             alias_str = alias != name and ' %s' % qn(alias) or ''
             if join_type and not first:
                 result.append('%s %s%s ON (%s.%s = %s.%s)'
@@ -528,16 +525,19 @@ class SQLCompiler(object):
                            qn2(lhs_col), qn(alias), qn2(col)))
             else:
                 connector = not first and ', ' or ''
-                result.append('%s%s%s' % (connector, qn3(name), alias_str))
+                result.append('%s%s%s' % (connector, qn(name), alias_str))
             first = False
         for t in self.query.extra_tables:
+            # Plain string table names are assumed to be in default schema
+            if not isinstance(t, tuple):
+                t = settings.DEFAULT_SCHEMA, t
             alias, _ = self.query.table_alias(t)
             # Only add the alias if it's not already present (the table_alias()
             # calls increments the refcount, so an alias refcount of one means
             # this is the only reference.
             if alias not in self.query.alias_map or self.query.alias_refcount[alias] == 1:
                 connector = not first and ', ' or ''
-                result.append('%s%s' % (connector, qn(t)))
+                result.append('%s%s' % (connector, qn(alias)))
                 first = False
         return result, []
 
@@ -931,8 +931,7 @@ class SQLDeleteCompiler(SQLCompiler):
         assert len(self.query.tables) == 1, \
                 "Can only delete from one table at a time."
         qn = self.quote_name_unless_alias
-        qn3 = self.connection.ops.qualified_name
-        result = ['DELETE FROM %s' % qn3(self.query.tables[0])]
+        result = ['DELETE FROM %s' % qn(self.query.tables[0])]
         where, params = self.query.where.as_sql(qn=qn, connection=self.connection)
         result.append('WHERE %s' % where)
         return ' '.join(result), tuple(params)
@@ -946,11 +945,14 @@ class SQLUpdateCompiler(SQLCompiler):
         self.pre_sql_setup()
         if not self.query.values:
             return '', ()
-        table = self.query.model._meta.qualified_name
-        alias = ' ' + self.quote_name_unless_alias(self.query.tables[0])
+        table = self.connection.ops.qualified_name(self.query.model._meta.qualified_name)
         qn = self.quote_name_unless_alias
-        qn3 = self.connection.ops.qualified_name
-        result = ['UPDATE %s%s' % (qn3(table), alias)]
+        alias = qn(self.query.tables[0])
+        if table == alias:
+            alias = ''
+        else:
+            alias = ' %s' % alias
+        result = ['UPDATE %s%s' % (table, alias)]
         result.append('SET')
         values, update_params = [], []
         for field, model, val in self.query.values:

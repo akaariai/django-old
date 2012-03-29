@@ -33,6 +33,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         'TextField':         'text',
         'TimeField':         'time',
     }
+    safe_reuse_schemas = set(['public'])
 
     def sql_table_creation_suffix(self):
         assert self.connection.settings_dict['TEST_COLLATION'] is None, "PostgreSQL does not support collation setting at database creation time."

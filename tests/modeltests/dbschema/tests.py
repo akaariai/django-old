@@ -11,6 +11,15 @@ class SchemaTests(TestCase):
         self.assertEqual(SameName2.objects.count(), 0)
         SameName2.objects.create(fk=sn1)
         self.assertEqual(SameName1.objects.count(), 1)
+    
+    @skipUnlessDBFeature("supports_schemas")
+    def test_update(self):
+        sn1 = SameName1.objects.create(txt='foo')
+        self.assertEqual(SameName1.objects.get(pk=sn1.pk).txt, 'foo')
+        sn1.txt = 'bar'
+        sn1.save()
+        self.assertEqual(SameName1.objects.get(pk=sn1.pk).txt, 'bar')
+        
 
     @skipUnlessDBFeature("supports_schemas")
     def test_fk(self):
