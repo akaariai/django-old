@@ -42,11 +42,13 @@ class SQLCompiler(object):
         """
         if name in self.quote_cache:
             return self.quote_cache[name]
-        if ((name in self.query.alias_map and name not in self.query.table_map) or
-                name in self.query.extra_select):
+        if name in self.query.alias_map and not isinstance(name, tuple):
             self.quote_cache[name] = name
             return name
-        r = self.connection.ops.quote_name(name)
+        if isinstance(name, tuple):
+            r = self.connection.ops.qualified_name(name)
+        else:
+            r = self.connection.ops.quote_name(name)
         self.quote_cache[name] = r
         return r
 
@@ -519,10 +521,10 @@ class SQLCompiler(object):
                 # Extra tables can end up in self.tables, but not in the
                 # alias_map if they aren't in a join. That's OK. We skip them.
                 continue
-            alias_str = ' %s' % alias
+            alias_str = alias != name and ' %s' % qn(alias) or ''
             if join_type and not first:
                 result.append('%s %s%s ON (%s.%s = %s.%s)'
-                        % (join_type, qn3(name), alias_str, qn(lhs),
+                        % (join_type, qn(name), alias_str, qn(lhs),
                            qn2(lhs_col), qn(alias), qn2(col)))
             else:
                 connector = not first and ', ' or ''
@@ -655,8 +657,6 @@ class SQLCompiler(object):
                 if dedupe:
                     dupe_set.add((opts, f.column))
 
-            if isinstance(alias, tuple):
-                alias = self.query.table_alias(alias)[0]
             alias = self.query.join((alias, table, f.column,
                     f.rel.get_related_field().column),
                     exclusions=used.union(avoid), promote=promote)
@@ -726,8 +726,6 @@ class SQLCompiler(object):
                         avoid.update(self.query.dupe_avoidance.get((id(opts), f.column), ()))
                         if dedupe:
                             dupe_set.add((opts, f.column))
-                if isinstance(alias, tuple):
-                    alias = self.query.table_alias(alias)[0]
                 alias = self.query.join(
                     (alias, table, f.rel.get_related_field().column, f.column),
                     exclusions=used.union(avoid),
@@ -949,7 +947,7 @@ class SQLUpdateCompiler(SQLCompiler):
         if not self.query.values:
             return '', ()
         table = self.query.model._meta.qualified_name
-        alias = ' ' + self.query.tables[0]
+        alias = ' ' + self.quote_name_unless_alias(self.query.tables[0])
         qn = self.quote_name_unless_alias
         qn3 = self.connection.ops.qualified_name
         result = ['UPDATE %s%s' % (qn3(table), alias)]
