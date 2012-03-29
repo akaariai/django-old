@@ -103,9 +103,8 @@ class Query(object):
         self.alias_refcount = SortedDict()
         self.alias_map = {}     # Maps alias to join information
         self.table_map = {}     # Maps table names to list of aliases.
-        # join_map maps a join indentifier (lhs_table, table, lhs_col, col)
-        # into the alias given for the joined table.
         self.join_map = {}
+        self.rev_join_map = {}  # Reverse of join_map.
         self.quote_cache = {}
         self.default_cols = True
         self.default_ordering = True
@@ -245,6 +244,7 @@ class Query(object):
         obj.alias_map = self.alias_map.copy()
         obj.table_map = self.table_map.copy()
         obj.join_map = self.join_map.copy()
+        obj.rev_join_map = self.rev_join_map.copy()
         obj.quote_cache = {}
         obj.default_cols = self.default_cols
         obj.default_ordering = self.default_ordering
@@ -463,39 +463,22 @@ class Query(object):
         change_map = {}
         used = set()
         conjunction = (connector == AND)
-        # Redo the joins in the rhs query. Note that it is important to
-        # advance in the same order the joins were originally created. This
-        # order is guaranteed by using rhs.tables.
+        first = True
         for alias in rhs.tables:
             if not rhs.alias_refcount[alias]:
                 # An unused alias.
                 continue
-            table, _, join_type, lhs, lhs_col, col, _ = rhs.alias_map[alias]
-            promote = (join_type == self.LOUTER)
-            if not lhs:
-                # If the table is the base table (no lhs == joined to
-                # nothing), then we can start from the existing alias. The base
-                # table must naturally exists in the combined-to query also.
-                new_alias = self.table_alias(table)[0]
-            else:
-                # If the left side of the join was already relabeled, use the
-                # updated alias.
-                lhs = change_map.get(lhs, lhs)
-                # Re-create the join. Note that if we are combining as a
-                # conjunction, then we must create a new join into the
-                # combined query for every existing join in the rhs query.
-                # (reason: WHERE t1.col = 1 and t1.col = 2 does not produce
-                # good results)
-                new_alias = self.join((lhs, table, lhs_col, col),
-                        conjunction, used, promote, not conjunction)
+            promote = (rhs.alias_map[alias][JOIN_TYPE] == self.LOUTER)
+            lhs, table, lhs_col, col = rhs.rev_join_map[alias]
+            # If the left side of the join was already relabeled, use the
+            # updated alias.
+            lhs = change_map.get(lhs, lhs)
+            new_alias = self.join((lhs, table, lhs_col, col),
+                    (conjunction and not first), used, promote, not conjunction)
             used.add(new_alias)
             change_map[alias] = new_alias
-        """
-        print
-        print 'AFTER:', self.alias_map
-        print
-        print self
-        """
+            first = False
+
         # So that we don't exclude valid results in an "or" query combination,
         # all joins exclusive to either the lhs or the rhs must be converted
         # to an outer join.
@@ -656,14 +639,14 @@ class Query(object):
         Callback used by deferred_to_columns(). The "target" parameter should
         be a set instance.
         """
-        table = model._meta.qualified_name
+        table = model._meta.db_table
         if table not in target:
             target[table] = set()
         for field in fields:
             target[table].add(field.column)
 
 
-    def table_alias(self, qualified_name, create=False):
+    def table_alias(self, table_name, create=False):
         """
         Returns a table alias for the given table_name and whether this is a
         new alias or not.
@@ -671,7 +654,7 @@ class Query(object):
         If 'create' is true, a new alias is always created. Otherwise, the
         most recently created alias for the table (if one exists) is reused.
         """
-        current = self.table_map.get(qualified_name)
+        current = self.table_map.get(table_name)
         if not create and current:
             alias = current[0]
             self.alias_refcount[alias] += 1
@@ -682,8 +665,9 @@ class Query(object):
             alias = '%s%d' % (self.alias_prefix, len(self.alias_map) + 1)
             current.append(alias)
         else:
-            alias = '%s%d' % (self.alias_prefix, len(self.alias_map) + 1)
-            self.table_map[qualified_name] = [alias]
+            # The first occurence of a table uses the table name directly.
+            alias = table_name
+            self.table_map[alias] = [alias]
         self.alias_refcount[alias] = 1
         self.tables.append(alias)
         return alias, True
@@ -785,15 +769,13 @@ class Query(object):
         for old_alias, new_alias in change_map.iteritems():
             alias_data = list(self.alias_map[old_alias])
             alias_data[RHS_ALIAS] = new_alias
-            # A bit clumsy and inefficient way to change one alias
-            # in join_map's alias list.
-            for t_ident, old_aliases in self.join_map.items():
-                if old_alias in old_aliases:
-                    new_aliases = list(old_aliases)
-                    new_aliases[new_aliases.index(old_alias)] = new_alias
-                    self.join_map[t_ident] = tuple(new_aliases)
-                    break
-                
+
+            t = self.rev_join_map[old_alias]
+            data = list(self.join_map[t])
+            data[data.index(old_alias)] = new_alias
+            self.join_map[t] = tuple(data)
+            self.rev_join_map[new_alias] = t
+            del self.rev_join_map[old_alias]
             self.alias_refcount[new_alias] = self.alias_refcount[old_alias]
             del self.alias_refcount[old_alias]
             self.alias_map[new_alias] = tuple(alias_data)
@@ -855,7 +837,7 @@ class Query(object):
             alias = self.tables[0]
             self.ref_alias(alias)
         else:
-            alias = self.join((None, self.model._meta.qualified_name, None, None))
+            alias = self.join((None, self.model._meta.db_table, None, None))
         return alias
 
     def count_active_tables(self):
@@ -871,8 +853,9 @@ class Query(object):
         """
         Returns an alias for the join in 'connection', either reusing an
         existing alias for that join or creating a new one. 'connection' is a
-        tuple (lhs, table, lhs_col, col) where 'lhs' is an existing table
-        alias. The join correspods to the SQL equivalent of::
+        tuple (lhs, table, lhs_col, col) where 'lhs' is either an existing
+        table alias or a table name. The join correspods to the SQL equivalent
+        of::
 
             lhs.lhs_col = table.col
 
@@ -899,7 +882,6 @@ class Query(object):
         is a candidate for promotion (to "left outer") when combining querysets.
         """
         lhs, table, lhs_col, col = connection
-        assert not isinstance(lhs, tuple), 'lhs is qualified_name, but it must be an alias'
         if lhs in self.alias_map:
             lhs_table = self.alias_map[lhs][TABLE_NAME]
         else:
@@ -941,6 +923,7 @@ class Query(object):
             self.join_map[t_ident] += (alias,)
         else:
             self.join_map[t_ident] = (alias,)
+        self.rev_join_map[alias] = t_ident
         return alias
 
     def setup_inherited_models(self):
@@ -968,7 +951,7 @@ class Query(object):
                     seen[model] = root_alias
                 else:
                     link_field = opts.get_ancestor_link(model)
-                    seen[model] = self.join((root_alias, model._meta.qualified_name,
+                    seen[model] = self.join((root_alias, model._meta.db_table,
                             link_field.column, model._meta.pk.column))
         self.included_inherited_models = seen
 
@@ -1352,7 +1335,7 @@ class Query(object):
                                     (id(opts), lhs_col), ()))
                             dupe_set.add((opts, lhs_col))
                         opts = int_model._meta
-                        alias = self.join((alias, opts.qualified_name, lhs_col,
+                        alias = self.join((alias, opts.db_table, lhs_col,
                                 opts.pk.column), exclusions=exclusions)
                         joins.append(alias)
                         exclusions.add(alias)
@@ -1378,12 +1361,12 @@ class Query(object):
                         (table1, from_col1, to_col1, table2, from_col2,
                                 to_col2, opts, target) = cached_data
                     else:
-                        table1 = field.m2m_qualified_name()
+                        table1 = field.m2m_db_table()
                         from_col1 = opts.get_field_by_name(
                             field.m2m_target_field_name())[0].column
                         to_col1 = field.m2m_column_name()
                         opts = field.rel.to._meta
-                        table2 = opts.qualified_name
+                        table2 = opts.db_table
                         from_col2 = field.m2m_reverse_name()
                         to_col2 = opts.get_field_by_name(
                             field.m2m_reverse_target_field_name())[0].column
@@ -1411,7 +1394,7 @@ class Query(object):
                     else:
                         opts = field.rel.to._meta
                         target = field.rel.get_related_field()
-                        table = opts.qualified_name
+                        table = opts.db_table
                         from_col = field.column
                         to_col = target.column
                         orig_opts._join_cache[name] = (table, from_col, to_col,
@@ -1433,12 +1416,12 @@ class Query(object):
                         (table1, from_col1, to_col1, table2, from_col2,
                                 to_col2, opts, target) = cached_data
                     else:
-                        table1 = field.m2m_qualified_name()
+                        table1 = field.m2m_db_table()
                         from_col1 = opts.get_field_by_name(
                             field.m2m_reverse_target_field_name())[0].column
                         to_col1 = field.m2m_reverse_name()
                         opts = orig_field.opts
-                        table2 = opts.qualified_name
+                        table2 = opts.db_table
                         from_col2 = field.m2m_column_name()
                         to_col2 = opts.get_field_by_name(
                             field.m2m_target_field_name())[0].column
@@ -1462,7 +1445,7 @@ class Query(object):
                         local_field = opts.get_field_by_name(
                                 field.rel.field_name)[0]
                         opts = orig_field.opts
-                        table = opts.qualified_name
+                        table = opts.db_table
                         from_col = local_field.column
                         to_col = field.column
                         # In case of a recursive FK, use the to_field for
@@ -1745,9 +1728,8 @@ class Query(object):
         else:
             opts = self.model._meta
             if not self.select:
-                count = self.aggregates_module.Count(
-                    (self.join((None, opts.qualified_name, None, None)), opts.pk.column),
-                    is_summary=True, distinct=True)
+                count = self.aggregates_module.Count((self.join((None, opts.db_table, None, None)), opts.pk.column),
+                                         is_summary=True, distinct=True)
             else:
                 # Because of SQL portability issues, multi-column, distinct
                 # counts need a sub-query -- see get_count() for details.
