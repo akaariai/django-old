@@ -410,6 +410,12 @@ class BaseDatabaseFeatures(object):
     can_distinct_on_fields = False
 
     supports_schemas = False
+    # If the database does not have multiple database support
+    # added with multiple schema support then databases and 
+    # schemas live in the same namespace. The has_real_schemas
+    # flag indicates that there are different namespaces Django
+    # can use for schemas and databases.
+    has_real_schemas = False
 
     def __init__(self, connection):
         self.connection = connection

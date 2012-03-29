@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 from functools import update_wrapper
 
+from django.conf import settings
 from django.db import connection
 from django.test import TestCase, skipUnlessDBFeature, skipIfDBFeature
 
@@ -65,13 +66,15 @@ class IntrospectionTests(TestCase):
         self.assertIs(type(tl), list)
 
     def test_installed_models(self):
-        tables = [(None, Article._meta.db_table), (None, Reporter._meta.db_table)]
+        tables = [(settings.DEFAULT_SCHEMA, Article._meta.db_table),
+                  (settings.DEFAULT_SCHEMA, Reporter._meta.db_table)]
         models = connection.introspection.installed_models(tables)
         self.assertEqual(models, set([Article, Reporter]))
 
     def test_sequence_list(self):
         sequences = connection.introspection.sequence_list()
-        expected = {'table': Reporter._meta.db_table, 'column': 'id', 'schema': None}
+        expected = {'table': Reporter._meta.db_table, 'column': 'id',
+                    'schema': settings.DEFAULT_SCHEMA}
         self.assertTrue(expected in sequences,
                      'Reporter sequence not found in sequence_list()')
 
@@ -125,7 +128,7 @@ class IntrospectionTests(TestCase):
             # do not know what that schema is. So, test everything except the
             # schema.
             self.assertTrue(3 in relations)
-            relations[3] = (relations[3][0], (None, relations[3][1][1]))
+            relations[3] = (relations[3][0], (settings.DEFAULT_SCHEMA, relations[3][1][1]))
             self.assertEqual(relations, {3: (0, Reporter._meta.qualified_name)})
 
     def test_get_key_columns(self):

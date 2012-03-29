@@ -3,6 +3,7 @@ import time
 
 from django.conf import settings
 from django.db.utils import load_backend
+from django.core.management.color import no_style
 
 # The prefix to put on the default database name when creating
 # the test database.
@@ -287,7 +288,7 @@ class BaseDatabaseCreation(object):
         self.connection.settings_dict["NAME"] = test_database_name
 
         # Create the test schemas.
-        self._create_test_schemas(verbosity, schemas, autoclobber)
+        created_schemas = self._create_test_schemas(verbosity, schemas, autoclobber)
 
         # Confirm the feature set of the test database
         self.connection.features.confirm()
@@ -323,10 +324,9 @@ class BaseDatabaseCreation(object):
         # the side effect of initializing the test database.
         self.connection.cursor()
 
-        return test_database_name
+        return test_database_name, created_schemas
 
     def _create_test_schemas(self, verbosity, schemas, autoclobber):
-        from django.core.management.color import no_style
         style = no_style()
         cursor = self.connection.cursor()
         existing_schemas = self.connection.introspection.get_schema_list(cursor)
@@ -348,22 +348,12 @@ class BaseDatabaseCreation(object):
                 print "Tests cancelled."
                 sys.exit(1)
            
-        for schema in schemas:
-            if schema in existing_schemas:
-                continue
+        to_create = [s for s in schemas if s not in existing_schemas]
+        for schema in to_create:
             if verbosity >= 1:
                 print "Creating schema %s" % schema
             cursor.execute(self.sql_create_schema(schema, style))
-
-    def _destroy_test_schemas(self, verbosity, schemas, cursor):
-        from django.core.management.color import no_style
-        style = no_style()
-        for schema in schemas:
-            if verbosity >= 1:
-                print "Destroying schema %s" % schema
-            cursor.execute(self.sql_destroy_schema(schema, style))
-            if verbosity >= 1:
-                print "Schema %s destroyed" % schema
+        return to_create
 
     def _get_schemas(self, apps):
         from django.db import models
@@ -446,13 +436,25 @@ class BaseDatabaseCreation(object):
 
         return test_database_name
 
-    def destroy_test_db(self, old_database_name, verbosity=1):
+    def destroy_test_db(self, old_database_name, created_schemas, verbosity=1):
         """
         Destroy a test database, prompting the user for confirmation if the
         database already exists.
         """
+        # On databases where there is no support for multiple databases
+        # with multiple schemas we need to destroy the created schemas
+        # manually.
+        cursor = self.connection.cursor()
+        style = no_style()
+        if not self.connection.features.has_real_schemas:
+            for schema in created_schemas:
+                if verbosity >= 1:
+                    print "Destroying schema '%s'..." % schema
+                cursor.execute(self.sql_destroy_schema(schema, style))
         self.connection.close()
         test_database_name = self.connection.settings_dict['NAME']
+                    
+
         if verbosity >= 1:
             test_db_repr = ''
             if verbosity >= 2:

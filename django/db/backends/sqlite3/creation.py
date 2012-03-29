@@ -70,7 +70,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         return test_database_name
 
     def _create_test_schemas(self, verbosity, schemas, cursor):
-        return
+        return []
 
     def _destroy_test_db(self, test_database_name, verbosity):
         if test_database_name and test_database_name != ":memory:":

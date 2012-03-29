@@ -84,6 +84,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_tablespaces = True
     can_distinct_on_fields = True
     supports_schemas = True
+    has_real_schemas = True
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'postgresql'

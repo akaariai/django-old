@@ -312,20 +312,20 @@ class DjangoTestSuiteRunner(object):
             test_databases.items(), dependencies):
             # Actually create the database for the first connection
             connection = connections[aliases[0]]
-            old_names.append((connection, db_name, True))
-            test_db_name = connection.creation.create_test_db(
+            test_db_name, created_schemas = connection.creation.create_test_db(
                 self.verbosity, autoclobber=not self.interactive)
+            old_names.append((connection, db_name, True, created_schemas))
             for alias in aliases[1:]:
                 connection = connections[alias]
                 if db_name:
-                    old_names.append((connection, db_name, False))
+                    old_names.append((connection, db_name, False, []))
                     connection.settings_dict['NAME'] = test_db_name
                 else:
                     # If settings_dict['NAME'] isn't defined, we have a backend
                     # where the name isn't important -- e.g., SQLite, which
                     # uses :memory:. Force create the database instead of
                     # assuming it's a duplicate.
-                    old_names.append((connection, db_name, True))
+                    old_names.append((connection, db_name, True, []))
                     connection.creation.create_test_db(
                         self.verbosity, autoclobber=not self.interactive)
 
@@ -346,9 +346,9 @@ class DjangoTestSuiteRunner(object):
         Destroys all the non-mirror databases.
         """
         old_names, mirrors = old_config
-        for connection, old_name, destroy in old_names:
+        for connection, old_name, destroy, created_schemas in old_names:
             if destroy:
-                connection.creation.destroy_test_db(old_name, self.verbosity)
+                connection.creation.destroy_test_db(old_name, created_schemas, self.verbosity)
 
     def teardown_test_environment(self, **kwargs):
         unittest.removeHandler()
