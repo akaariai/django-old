@@ -3,7 +3,7 @@ A series of tests to establish that the command-line managment tools work as
 advertised - especially with regards to the handling of the DJANGO_SETTINGS_MODULE
 and default settings.py files.
 """
-from __future__ import with_statement
+from __future__ import with_statement, absolute_import
 
 import os
 import re
@@ -14,12 +14,16 @@ import sys
 
 from django import conf, bin, get_version
 from django.conf import settings
+from django.db import connection
 from django.test.simple import DjangoTestSuiteRunner
 from django.utils import unittest
 from django.test import LiveServerTestCase
 
+from .models import Article
+
 test_dir = os.path.dirname(os.path.dirname(__file__))
-expected_query_re = re.compile(r'CREATE TABLE [`"]admin_scripts_article[`"]', re.IGNORECASE)
+tblname = connection.qname(Article)
+expected_query_re = re.compile(r'CREATE TABLE %s' % tblname, re.IGNORECASE)
 
 
 class AdminScriptTestCase(unittest.TestCase):

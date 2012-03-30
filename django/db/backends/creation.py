@@ -365,6 +365,9 @@ class BaseDatabaseCreation(object):
                 if not schema or schema in schemas:
                     continue
                 schemas.add(schema)
+        conn_default_schema = self.connection.settings_dict['SCHEMA']
+        if conn_default_schema:
+            schemas.add(conn_default_schema)
         return schemas
 
     def _get_app_with_schemas(self):

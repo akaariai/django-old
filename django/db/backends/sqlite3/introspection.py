@@ -187,8 +187,15 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                  'pk': field[5]     # undocumented
                  } for field in cursor.fetchall()]
 
-    def table_name_converter(self, name):
+    def table_name_converter(self, name, plain=False):
+        # In schema-qualified case we need to give back the exact same
+        # format as qualified_name gives. In plain case however we use
+        # the given name as is. 
         if isinstance(name, tuple):
-            return None, name[1]
+            if plain:
+                return None, name[1]
+            else:
+                # quote_name will wrap the name with "", so remove those.
+                return None, self.connection.ops.qualified_name(name)[1:-1]
         else:
             return name

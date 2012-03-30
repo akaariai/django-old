@@ -34,13 +34,20 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         Returns a list of all by-default visible table names in the current
         database.
         """
-        cursor.execute("""
+        sql = """
             SELECT n.nspname, c.relname
             FROM pg_catalog.pg_class c
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v', '')
                 AND n.nspname NOT IN ('pg_catalog', 'pg_toast')
-                AND pg_catalog.pg_table_is_visible(c.oid)""")
+                AND (pg_catalog.pg_table_is_visible(c.oid)"""
+        # We must add the default schema to always visible schemas to make
+        # things work nicely.
+        if self.connection.schema:
+            sql += " OR n.nspname = %s)"
+            cursor.execute(sql, (self.connection.schema,))
+        else:
+            cursor.execute(sql + ')')
         return [(row[0], row[1]) for row in cursor.fetchall()]
     
     def get_qualified_tables_list(self, cursor):
@@ -74,8 +81,12 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         null_map = dict(cursor.fetchall())
         cursor.execute(
             "SELECT * FROM %s LIMIT 1" % self.connection.ops.qualified_name(qualified_name))
-        return [tuple([item for item in line[:6]] + [null_map[line[0]]==u'YES'])
+        try:
+         return [tuple([item for item in line[:6]] + [null_map[line[0]]==u'YES'])
             for line in cursor.description]
+        except:
+            import ipdb; ipdb.set_trace()
+            raise
 
     def get_relations(self, cursor, qualified_name):
         """
@@ -156,3 +167,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 continue
             indexes[row[0]] = {'primary_key': row[3], 'unique': row[2]}
         return indexes
+
+    def table_name_converter(self, name, plain=False):
+        if isinstance(name, tuple):
+            return (name[0] or self.connection.settings_dict['SCHEMA']), name[1]
+        return name

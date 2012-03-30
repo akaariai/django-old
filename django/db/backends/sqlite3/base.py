@@ -140,7 +140,13 @@ class DatabaseOperations(BaseDatabaseOperations):
         return '"%s"' % name
 
     def qualified_name(self, name):
-        return self.quote_name(name[1])
+        # Fake schema support by using the schema as a prefix to the
+        # table name.
+        schema = name[0] or self.connection.settings_dict['SCHEMA']
+        if schema:
+            return self.quote_name('%s_%s' % (schema, name[1]))
+        else:
+            return self.quote_name(name[1])
 
     def no_limit_value(self):
         return -1
@@ -299,6 +305,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         cursor = self.cursor()
         if table_names is None:
             table_names = self.introspection.get_visible_tables_list(cursor)
+        else:
+            table_names = [self.introspection.table_name_converter(t) for t in table_names]
         for table_name in table_names:
             primary_key_column_name = self.introspection.get_primary_key_column(cursor, table_name)
             if not primary_key_column_name:

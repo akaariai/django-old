@@ -88,7 +88,6 @@ class DatabaseCreation(BaseDatabaseCreation):
         SQLite since the databases will be distinct despite having the same
         TEST_NAME. See http://www.sqlite.org/inmemorydb.html
         """
-        settings_dict = self.connection.settings_dict
         test_dbname = self._get_test_db_name()
         sig = [self.connection.settings_dict['NAME']]
         if test_dbname == ':memory:':

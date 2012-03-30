@@ -77,8 +77,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         (schema_name.tbl_name) if there is a schema_name, else returns just
         the tbl_name in quoted format.
         """
-        if qualified_name[0]:
-            return "%s.%s" % (self.quote_name(qualified_name[0]),
+        schema = qualified_name[0] or self.connection.settings_dict['SCHEMA']
+        if schema:
+            return "%s.%s" % (self.quote_name(schema),
                               self.quote_name(qualified_name[1]))
         else:
             return self.quote_name(qualified_name[1])

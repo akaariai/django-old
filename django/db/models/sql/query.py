@@ -59,7 +59,7 @@ class RawQuery(object):
         if self.cursor is None:
             self._execute_query()
         converter = connections[self.using].introspection.table_name_converter
-        return [converter(column_meta[0])
+        return [converter(column_meta[0], plain=True)
                 for column_meta in self.cursor.description]
 
     def __iter__(self):

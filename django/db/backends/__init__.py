@@ -44,6 +44,10 @@ class BaseDatabaseWrapper(object):
 
     def __ne__(self, other):
         return not self == other
+    
+    def _get_default_schema(self):
+        return self.settings_dict['SCHEMA']
+    schema = property(_get_default_schema)
 
     def _commit(self):
         if self.connection is not None:
@@ -310,6 +314,13 @@ class BaseDatabaseWrapper(object):
 
     def make_debug_cursor(self, cursor):
         return util.CursorDebugWrapper(cursor, self)
+
+    def qname(self, model):
+        """
+        Given a model class or instance, returns its current database table
+        name in schema qualified format.
+        """
+        return self.ops.qualified_name(model._meta.qualified_name)
 
 class BaseDatabaseFeatures(object):
     allows_group_by_pk = False
@@ -906,10 +917,16 @@ class BaseDatabaseIntrospection(object):
         distinguish between a FloatField and IntegerField, for example."""
         return self.data_types_reverse[data_type]
 
-    def table_name_converter(self, name):
-        """Apply a conversion to the name for the purposes of comparison.
+    def table_name_converter(self, name, plain=False):
+        """
+        Apply a conversion to the name for the purposes of comparison.
 
         The default table name converter is for case sensitive comparison.
+
+        The given name can be either a tuple representing a schema qualified
+        name, or just a table name. If plain is set, then backends should
+        not use default schema or test schema prefix when doing the
+        conversion.
         """
         return name
 
@@ -970,8 +987,10 @@ class BaseDatabaseIntrospection(object):
         if only_existing:
             qualified_tables = [t for t in tables if t[0]]
             nonqualified_tables = [t for t in tables if not t[0]]
-            existing_nonqualified_tables = [self.table_name_converter((None, t)) for _, t in self.table_names()]
-            existing_qualified_tables = [self.table_name_converter(t) for t in self.qualified_names()]
+            existing_nonqualified_tables = [self.table_name_converter(t, True)
+                                            for t in self.table_names()]
+            existing_qualified_tables = [self.table_name_converter(t, True)
+                                         for t in self.qualified_names()]
             tables = [
                 t for t in nonqualified_tables
                 if self.table_name_converter(t) in existing_nonqualified_tables
@@ -1011,8 +1030,9 @@ class BaseDatabaseIntrospection(object):
                     continue
                 for f in model._meta.local_fields:
                     if isinstance(f, models.AutoField):
-                        sequence_list.append({'table': model._meta.db_table, 'column': f.column,
-                                              'schema': model._meta.db_schema})
+                        schema, table = self.table_name_converter(model._meta.qualified_name)
+                        sequence_list.append({'table': table, 'column': f.column,
+                                              'schema': schema})
                         break # Only one AutoField is allowed per model, so don't bother continuing.
 
                 for f in model._meta.local_many_to_many:

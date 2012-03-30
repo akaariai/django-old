@@ -1561,7 +1561,7 @@ class RawQuerySet(object):
             self._model_fields = {}
             for field in self.model._meta.fields:
                 name, column = field.get_attname_column()
-                self._model_fields[converter(column)] = field
+                self._model_fields[converter(column, plain=True)] = field
         return self._model_fields
 
 

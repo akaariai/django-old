@@ -314,7 +314,7 @@ class BackendTestCase(TestCase):
     def create_squares_with_executemany(self, args):
         cursor = connection.cursor()
         opts = models.Square._meta
-        tbl = connection.introspection.table_name_converter(opts.db_table)
+        tbl = connection.qname(models.Square)
         f1 = connection.ops.quote_name(opts.get_field('root').column)
         f2 = connection.ops.quote_name(opts.get_field('square').column)
         query = 'INSERT INTO %s (%s, %s) VALUES (%%s, %%s)' % (tbl, f1, f2)
@@ -359,7 +359,7 @@ class BackendTestCase(TestCase):
         opts2 = models.Person._meta
         f3, f4 = opts2.get_field('first_name'), opts2.get_field('last_name')
         query2 = ('SELECT %s, %s FROM %s ORDER BY %s'
-          % (qn(f3.column), qn(f4.column), connection.introspection.table_name_converter(opts2.db_table),
+          % (qn(f3.column), qn(f4.column), connection.qname(models.Person),
              qn(f3.column)))
         cursor = connection.cursor()
         cursor.execute(query2)
@@ -376,7 +376,7 @@ class BackendTestCase(TestCase):
     def test_duplicate_table_error(self):
         """ Test that creating an existing table returns a DatabaseError """
         cursor = connection.cursor()
-        query = 'CREATE TABLE %s (id INTEGER);' % models.Article._meta.db_table
+        query = 'CREATE TABLE %s (id INTEGER);' % connection.qname(models.Article)
         with self.assertRaises(DatabaseError):
             cursor.execute(query)
 

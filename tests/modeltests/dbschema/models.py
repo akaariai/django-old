@@ -4,20 +4,20 @@ class SameName1(models.Model):
     txt = models.TextField(null=True)
 
     class Meta:
-        db_table = 'stn1'
+        db_table = 'sn'
 
 class SameName2(models.Model):
     fk = models.ForeignKey(SameName1)
 
     class Meta:
-        db_table = 'stn2'
+        db_table = 'sn'
         db_schema = 'schema1'
 
 class SameName3(models.Model):
     fk = models.ForeignKey(SameName1)
 
     class Meta:
-        db_table = 'stn3'
+        db_table = 'sn'
         db_schema = 'schema2'
 
 class M2MTable(models.Model):
