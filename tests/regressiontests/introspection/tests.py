@@ -41,7 +41,7 @@ class IntrospectionTests(TestCase):
 
     def test_table_names(self):
         conv = connection.introspection.table_name_converter
-        tl = [conv(t, plain=True) for t in connection.introspection.table_names()]
+        tl = [conv(t, plain=True) for t in connection.introspection.all_table_names()]
         self.assertTrue(conv(Reporter._meta.qualified_name) in tl,
                      "'%s' isn't in table_list()." % Reporter._meta.db_table)
         self.assertTrue(conv(Article._meta.qualified_name) in tl,
@@ -138,9 +138,9 @@ class IntrospectionTests(TestCase):
             # do not know what that schema is. So, test everything except the
             # schema.
             # TODO: this testing logic is UGLY!
-            def_schema = connection.schema if connection.features.supports_schemas else None
+            schema = connection.get_def_schema(Reporter._meta.db_schema)
             self.assertTrue(3 in relations)
-            relations[3] = (relations[3][0], (Reporter._meta.qualified_name[0] or def_schema, relations[3][1][1]))
+            relations[3] = (relations[3][0], (schema, relations[3][1][1]))
             self.assertEqual(relations, {3: (0, rep_tbl)})
 
     def test_get_key_columns(self):

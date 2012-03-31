@@ -17,6 +17,8 @@ class DeleteLockingTest(TransactionTestCase):
     def setUp(self):
         # Create a second connection to the default database
         conn_settings = settings.DATABASES[DEFAULT_DB_ALIAS]
+        # TODO: there must be a better way to do this copying. .deepcopy()
+        # perhaps?
         self.conn2 = backend.DatabaseWrapper({
             'HOST': conn_settings['HOST'],
             'NAME': conn_settings['NAME'],
@@ -26,6 +28,8 @@ class DeleteLockingTest(TransactionTestCase):
             'USER': conn_settings['USER'],
             'TIME_ZONE': settings.TIME_ZONE,
             'SCHEMA': conn_settings['SCHEMA'],
+            'TEST_SCHEMA_PREFIX': conn_settings['TEST_SCHEMA_PREFIX'],
+            'TEST_SCHEMAS': conn_settings['TEST_SCHEMAS'],
         })
 
         # Put both DB connections into managed transaction mode

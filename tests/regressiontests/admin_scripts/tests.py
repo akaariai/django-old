@@ -22,9 +22,6 @@ from django.test import LiveServerTestCase
 from .models import Article
 
 test_dir = os.path.dirname(os.path.dirname(__file__))
-tblname = connection.qname(Article)
-expected_query_re = re.compile(r'CREATE TABLE %s' % tblname, re.IGNORECASE)
-
 
 class AdminScriptTestCase(unittest.TestCase):
     def write_settings(self, filename, apps=None, is_dir=False, sdict=None):
@@ -859,6 +856,8 @@ class ManageAlternateSettings(AdminScriptTestCase):
     """
     def setUp(self):
         self.write_settings('alternate_settings.py')
+        tblname = connection.qname(Article)
+        self.expected_query_re = re.compile(r'CREATE TABLE %s' % tblname, re.IGNORECASE)
 
     def tearDown(self):
         self.remove_settings('alternate_settings.py')
@@ -874,14 +873,14 @@ class ManageAlternateSettings(AdminScriptTestCase):
         "alternate: manage.py builtin commands work with settings provided as argument"
         args = ['sqlall', '--settings=alternate_settings', 'admin_scripts']
         out, err = self.run_manage(args)
-        self.assertRegexpMatches(out, expected_query_re)
+        self.assertRegexpMatches(out, self.expected_query_re)
         self.assertNoOutput(err)
 
     def test_builtin_with_environment(self):
         "alternate: manage.py builtin commands work if settings are provided in the environment"
         args = ['sqlall', 'admin_scripts']
         out, err = self.run_manage(args, 'alternate_settings')
-        self.assertRegexpMatches(out, expected_query_re)
+        self.assertRegexpMatches(out, self.expected_query_re)
         self.assertNoOutput(err)
 
     def test_builtin_with_bad_settings(self):
