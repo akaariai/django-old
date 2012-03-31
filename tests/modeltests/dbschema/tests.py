@@ -2,7 +2,7 @@ from __future__ import absolute_import
 
 from .models import SameName1, SameName2, M2MTable
 
-from django.test import TestCase, skipUnlessDBFeature
+from django.test import TestCase
 
 class SchemaTests(TestCase):
     def test_create(self):
@@ -18,7 +18,6 @@ class SchemaTests(TestCase):
         sn1.save()
         self.assertEqual(SameName1.objects.get(pk=sn1.pk).txt, 'bar')
         
-
     def test_fk(self):
         sn1 = SameName1.objects.create()
         sn2 = SameName1.objects.create()
@@ -27,6 +26,7 @@ class SchemaTests(TestCase):
         SameName2.objects.create(fk=sn2)
         self.assertEqual(SameName2.objects.filter(fk=sn1).count(), 2)
         self.assertEqual(SameName2.objects.filter(fk=sn2).count(), 1)
+        self.assertEqual(SameName2.objects.select_related('fk').order_by('fk__pk')[0].fk.pk, sn1.pk)
         self.assertEqual(SameName2.objects.select_related('fk').order_by('fk__pk')[0].fk.pk, sn1.pk)
         self.assertEqual(SameName2.objects.order_by('fk__pk')[0].fk.pk, sn1.pk)
     

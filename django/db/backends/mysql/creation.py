@@ -58,9 +58,28 @@ class DatabaseCreation(BaseDatabaseCreation):
             style.SQL_KEYWORD('NOT NULL'))
         ]
         deferred = [
-            (field.m2m_db_table(), field.m2m_column_name(), opts.db_table,
+            (field.m2m_qualified_table(), field.m2m_column_name(), opts.qualified_name,
                 opts.pk.column),
-            (field.m2m_db_table(), field.m2m_reverse_name(),
-                field.rel.to._meta.db_table, field.rel.to._meta.pk.column)
+            (field.m2m_qualified_table(), field.m2m_reverse_name(),
+                field.rel.to._meta.qualified_name, field.rel.to._meta.pk.column)
             ]
         return table_output, deferred
+
+    def sql_destroy_schema(self, schema, style):
+        qn = self.connection.ops.quote_name
+        return "%s %s;" % (style.SQL_KEYWORD('DROP DATABASE'), qn(schema))
+    
+    def qualified_index_name(self, model, col):
+        """
+        On MySQL we must use the db_schema prefixed to the index name as
+        indexes can not be placed into different schemas.
+        """
+        from django.db.backends.util import truncate_name
+        schema = model._meta.db_schema or self.connection.schema
+        schema_prefix = ''
+        if schema:
+             schema = self.connection.ops.schema_to_test_schema(schema)
+             schema_prefix = truncate_name(schema, self.connection.ops.max_name_length() / 2) + '_'
+        i_name = '%s%s_%s' % (schema_prefix, model._meta.db_table, self._digest(col))
+        i_name = self.connection.ops.quote_name(truncate_name(i_name, self.connection.ops.max_name_length()))
+        return i_name

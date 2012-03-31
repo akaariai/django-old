@@ -139,10 +139,10 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return '"%s"' % name
 
-    def qualified_name(self, name):
+    def qualified_name(self, name, qualify_hint=False):
         # Fake schema support by using the schema as a prefix to the
         # table name.
-        schema = name[0] or self.connection.settings_dict['SCHEMA']
+        schema = name[0] or self.connection.schema
         if schema:
             return self.quote_name('%s_%s' % (schema, name[1]))
         else:
@@ -251,6 +251,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.creation = DatabaseCreation(self)
         self.introspection = DatabaseIntrospection(self)
         self.validation = BaseDatabaseValidation(self)
+
+    def get_def_schema(self, schema):
+        return None
 
     def _sqlite_create_connection(self):
         settings_dict = self.settings_dict

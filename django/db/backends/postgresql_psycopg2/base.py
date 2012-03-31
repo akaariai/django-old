@@ -123,6 +123,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.validation = BaseDatabaseValidation(self)
         self._pg_version = None
 
+    def get_def_schema(self, schema):
+        # TODO: introspect on first connect what is the real default schema
+        return schema or self.schema or 'public'
+
     def check_constraints(self, table_names=None):
         """
         To check constraints, we set constraints to immediate. Then, when, we're done we must ensure they

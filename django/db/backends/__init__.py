@@ -45,9 +45,19 @@ class BaseDatabaseWrapper(object):
     def __ne__(self, other):
         return not self == other
     
-    def _get_default_schema(self):
+    def _get_schema(self):
         return self.settings_dict['SCHEMA']
-    schema = property(_get_default_schema)
+    schema = property(_get_schema)
+
+    def _get_test_schema_prefix(self):
+        return self.settings_dict['TEST_SCHEMA_PREFIX']
+    test_schema_prefix = property(_get_test_schema_prefix)
+
+    def get_def_schema(self, schema):
+        return schema or self.schema
+
+    def create_test_schema_prefix(self):
+        return ""
 
     def _commit(self):
         if self.connection is not None:
@@ -692,12 +702,21 @@ class BaseDatabaseOperations(object):
         """
         raise NotImplementedError()
 
-    def qualified_name(self, qualified_name):
+    def schema_to_test_schema(self, schema):
+        return schema
+
+    def qualified_name(self, qualified_name, qualify_hint=False):
         """
-        Prepares and formats the table name if necessary.
-        Just returns quoted db_table if not supported.
+        Formats the given schema, table_name tuple into database's
+        qualified and quoted name format. The schema can be None.
+
+        Certain databases need to qualify all names if there is a single
+        qualified name in the query to avoid alias collisions for example.
+        If qualify_hint is given, this tells the problematic backends to
+        always append the default schema to the returned qualified name
+        even if there is no schema in the given qualfied_name parameter.
         """
-        return self.quote_name(qualified_name[1])
+        raise NotImplementedError
 
     def prep_db_index(self, db_schema, db_index):
         """
@@ -943,21 +962,27 @@ class BaseDatabaseIntrospection(object):
 
     def qualified_names(self):
         """
-        Returns qualified table names for all schemas in the current database.
+        Returns qualified table names for all schemas Django is using.
         """
         cursor = self.connection.cursor()
-        return self.get_qualified_tables_list(cursor)
+        schema_apps = self.connection.creation._get_app_with_schemas()
+        schemas = self.connection.creation._get_schemas(schema_apps)
+        return self.get_qualified_tables_list(cursor, schemas)
+    
+    def get_qualified_tables_list(self, cursor, schemas):
+        """
+        Returns schema qualified names (as pair schema, tbl_name) of all
+        tables in the given schemas.
+        """
+        return []
+
+    def all_table_names(self):
+        return self.qualified_names() + self.table_names()
 
     def get_schema_list(self, cursor):
         "Returns a list of schemas that exist in the database"
         return []
     
-    def get_qualified_tables_list(self, cursor):
-        """
-        Returns schema qualified names (as pair schema, tbl_name) of all
-        tables in the current database.
-        """
-        return []
 
     def schema_names(self):
         "Returns a list of schemas that exist in the database"
@@ -984,22 +1009,15 @@ class BaseDatabaseIntrospection(object):
                 tables.add(model._meta.qualified_name)
                 tables.update([f.m2m_qualified_name() for f in model._meta.local_many_to_many])
         tables = list(tables)
+        found_tables = []
         if only_existing:
-            qualified_tables = [t for t in tables if t[0]]
-            nonqualified_tables = [t for t in tables if not t[0]]
-            existing_nonqualified_tables = [self.table_name_converter(t, True)
-                                            for t in self.table_names()]
-            existing_qualified_tables = [self.table_name_converter(t, True)
-                                         for t in self.qualified_names()]
-            tables = [
-                t for t in nonqualified_tables
-                if self.table_name_converter(t) in existing_nonqualified_tables
-            ]
-            tables.extend([
-                t for t in qualified_tables
-                if self.table_name_converter(t) in existing_qualified_tables
+            existing_tables = set([self.table_name_converter(t, True)
+                                   for t in self.all_table_names()])
+            found_tables.extend([
+                t for t in tables
+                if self.table_name_converter(t) in existing_tables
             ])
-        return tables
+        return found_tables
 
     def installed_models(self, tables):
         "Returns a set of all models represented by the provided list of table names."

@@ -115,7 +115,8 @@ class Options(object):
         if not self.db_table:
             self.db_table = "%s_%s" % (self.app_label, self.module_name)
             # TODO: Using connection.ops is wrong: in multidb setup this doesn't work
-            # correctly except as different connections have different max_name_length.
+            # correctly except if different connections happen to have the same
+            # max_name_length.
             self.db_table = truncate_name(self.db_table, connection.ops.max_name_length())
         self.qualified_name = (self.db_schema, self.db_table)
 

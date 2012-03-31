@@ -166,10 +166,20 @@ class BaseDatabaseCreation(object):
                     ' %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s)%s;' %
                     (qn3(r_qname), qn(truncate_name(
                         r_name, self.connection.ops.max_name_length())),
-                    qn(r_col), qn3(qname), qn(col),
+                    qn(r_col), qn3(qname, qualify_hint=r_qname[0] is not None), qn(col),
                     self.connection.ops.deferrable_sql()))
             del pending_references[model]
         return final_output
+
+    def qualified_name_for_ref(self, from_table, ref_table):
+        """
+        In certain databases if the from_table is in qualified format and
+        ref_table is not, it is assumed the ref_table references a table
+        in the same schema as from_table is from. However, we want the
+        reference to be to default schema, not the same schema the from_table
+        is, and this method can be used to fix that certain database.
+        """
+        return self.connection.ops.qualified_name(ref_table)
 
     def sql_indexes_for_model(self, model, style):
         """
@@ -186,8 +196,6 @@ class BaseDatabaseCreation(object):
         """
         Return the CREATE INDEX SQL statements for a single model field.
         """
-        from django.db.backends.util import truncate_name
-
         if f.db_index and not f.unique:
             qn = self.connection.ops.quote_name
             qn3 = self.connection.ops.qualified_name
@@ -198,9 +206,7 @@ class BaseDatabaseCreation(object):
                     tablespace_sql = ' ' + tablespace_sql
             else:
                 tablespace_sql = ''
-            i_name = '%s_%s' % (model._meta.db_table, self._digest(f.column))
-            i_name = truncate_name(i_name, self.connection.ops.max_name_length())
-            qualified_name = qn3((model._meta.db_schema, i_name))
+            qualified_name = self.qualified_index_name(model, f.column) 
             output = [style.SQL_KEYWORD('CREATE INDEX') + ' ' +
                 style.SQL_TABLE(qualified_name) + ' ' +
                 style.SQL_KEYWORD('ON') + ' ' +
@@ -211,13 +217,23 @@ class BaseDatabaseCreation(object):
             output = []
         return output
 
+    def qualified_index_name(self, model, col):
+        """
+        Some databases do support schemas, but indexes can not be placed in a
+        different schema. So, to support those databases, we need to be able
+        to return the index name in different qualified format than the rest
+        of the database identifiers.
+        """
+        from django.db.backends.util import truncate_name
+        i_name = '%s_%s' % (model._meta.db_table, self._digest(col))
+        i_name = truncate_name(i_name, self.connection.ops.max_name_length())
+        return self.connection.ops.qualified_name((model._meta.db_schema, i_name))
+
     def sql_destroy_schema(self, schema, style):
         """
         Returns the SQL required to destroy a single schema.
         """
-        qn = self.connection.ops.quote_name
-        output = "%s %s CASCADE;" % (style.SQL_KEYWORD('DROP SCHEMA IF EXISTS'), qn(schema))
-        return output
+        return ""
 
     def sql_destroy_model(self, model, references_to_delete, style):
         """
@@ -267,6 +283,10 @@ class BaseDatabaseCreation(object):
         """
         Creates a test database, prompting the user for confirmation if the
         database already exists. Returns the name of the test database created.
+
+        Also creates needed schemas, which on some backends live in the same
+        namespace than databases. If there are schema name clashes, prompts
+        the user for confirmation.
         """
         # Don't import django.core.management if it isn't needed.
         from django.core.management import call_command
@@ -286,6 +306,7 @@ class BaseDatabaseCreation(object):
 
         self.connection.close()
         self.connection.settings_dict["NAME"] = test_database_name
+        schemas = [self.connection.ops.schema_to_test_schema(s) for s in schemas]
 
         # Create the test schemas.
         created_schemas = self._create_test_schemas(verbosity, schemas, autoclobber)
@@ -339,11 +360,18 @@ class BaseDatabaseCreation(object):
                     "Type 'yes' if you would like to try deleting these schemas "
                     "or 'no' to cancel: ")
             if autoclobber or confirm == 'yes':
-                for schema in conflicts:
-                    if verbosity >= 1:
-                        print "Destroying schema %s" % schema
-                    cursor.execute(self.sql_destroy_schema(schema, style))
-                    existing_schemas.remove(schema)
+                try:
+                    # Some databases (well, MySQL) complain about foreign keys when
+                    # dropping a database. So, disable the constraints temporarily.
+                    self.connection.disable_constraint_checking()
+                    for schema in conflicts:
+                        if verbosity >= 1:
+                            print "Destroying schema %s" % schema
+                        print self.sql_destroy_schema(schema, style)
+                        cursor.execute(self.sql_destroy_schema(schema, style))
+                        existing_schemas.remove(schema)
+                finally:
+                    self.connection.enable_constraint_checking()
             else:
                 print "Tests cancelled."
                 sys.exit(1)
@@ -353,6 +381,7 @@ class BaseDatabaseCreation(object):
             if verbosity >= 1:
                 print "Creating schema %s" % schema
             cursor.execute(self.sql_create_schema(schema, style))
+            self.connection.settings_dict['TEST_SCHEMAS'].append(schema)
         return to_create
 
     def _get_schemas(self, apps):
@@ -424,8 +453,18 @@ class BaseDatabaseCreation(object):
                     if verbosity >= 1:
                         print ("Destroying old test database '%s'..."
                                % self.connection.alias)
-                    cursor.execute(
-                        "DROP DATABASE %s" % qn(test_database_name))
+                    # MySQL nicely doesn't have a drop-cascade option, nor
+                    # does it allow dropping a database having foreign key
+                    # references pointing to it. So, we just disable foreign
+                    # key checks and then immediately enable them. MySQL is
+                    # happy after this hack, and other databases simply do
+                    # not care.
+                    try:
+                        self.connection.disable_constraint_checking()
+                        cursor.execute(
+                            "DROP DATABASE %s" % qn(test_database_name))
+                    finally:
+                        self.connection.enable_constraint_checking()
                     cursor.execute(
                         "CREATE DATABASE %s %s" % (qn(test_database_name),
                                                    suffix))
@@ -437,6 +476,7 @@ class BaseDatabaseCreation(object):
                 print "Tests cancelled."
                 sys.exit(1)
 
+        self.connection.settings_dict['TEST_SCHEMAS'].append(test_database_name)
         return test_database_name
 
     def destroy_test_db(self, old_database_name, created_schemas, verbosity=1):
@@ -450,10 +490,14 @@ class BaseDatabaseCreation(object):
         cursor = self.connection.cursor()
         style = no_style()
         if not self.connection.features.has_real_schemas:
-            for schema in created_schemas:
-                if verbosity >= 1:
-                    print "Destroying schema '%s'..." % schema
-                cursor.execute(self.sql_destroy_schema(schema, style))
+            try:
+                self.connection.disable_constraint_checking()
+                for schema in created_schemas:
+                    if verbosity >= 1:
+                        print "Destroying schema '%s'..." % schema
+                    cursor.execute(self.sql_destroy_schema(schema, style))
+            finally:
+                self.connection.enable_constraint_checking()
         self.connection.close()
         test_database_name = self.connection.settings_dict['NAME']
                     

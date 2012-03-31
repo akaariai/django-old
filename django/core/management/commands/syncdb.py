@@ -55,11 +55,13 @@ class Command(NoArgsCommand):
         db = options.get('database')
         connection = connections[db]
         cursor = connection.cursor()
+        converter = connection.introspection.table_name_converter
 
         # Get a list of already installed *models* so that references work right.
         nonqualified_tables = connection.introspection.table_names()
         qualified_tables = connection.introspection.qualified_names()
-        tables = [(None, t) for _, t in nonqualified_tables] + qualified_tables
+        tables = ([converter((None, t), plain=True) for _, t in nonqualified_tables] +
+                 [converter(t, plain=True) for t in qualified_tables])
         seen_models = connection.introspection.installed_models(tables)
         created_models = set()
         pending_references = {}
@@ -73,7 +75,6 @@ class Command(NoArgsCommand):
         ]
         def model_installed(model):
             opts = model._meta
-            converter = connection.introspection.table_name_converter
             return not ((converter(opts.qualified_name) in tables) or
                 (opts.auto_created and converter(opts.auto_created._meta.qualified_name) in tables))
 

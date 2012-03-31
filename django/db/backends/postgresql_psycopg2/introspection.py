@@ -26,7 +26,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         cursor.execute("""
             SELECT n.nspname
             FROM pg_catalog.pg_namespace n
-            WHERE n.nspname != 'information_schema' OR n.nspname not like 'pg_%s'""")
+            WHERE n.nspname != 'information_schema' AND n.nspname not like 'pg_%s'""")
         return [row[0] for row in cursor.fetchall()]
         
     def get_visible_tables_list(self, cursor):
@@ -50,7 +50,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             cursor.execute(sql + ')')
         return [(row[0], row[1]) for row in cursor.fetchall()]
     
-    def get_qualified_tables_list(self, cursor):
+    def get_qualified_tables_list(self, cursor, schemas):
         """
         Returns schema qualified names of all tables in the current database.
         """
@@ -59,7 +59,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             FROM pg_catalog.pg_class c
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v', '')
-                AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema')""")
+                AND n.nspname IN %s""", (tuple(schemas),))
         return [(row[0], row[1]) for row in cursor.fetchall()]
 
     def get_table_description(self, cursor, qualified_name):
@@ -81,12 +81,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         null_map = dict(cursor.fetchall())
         cursor.execute(
             "SELECT * FROM %s LIMIT 1" % self.connection.ops.qualified_name(qualified_name))
-        try:
-         return [tuple([item for item in line[:6]] + [null_map[line[0]]==u'YES'])
-            for line in cursor.description]
-        except:
-            import ipdb; ipdb.set_trace()
-            raise
+        return [tuple([item for item in line[:6]] + [null_map[line[0]]==u'YES'])
+                for line in cursor.description]
 
     def get_relations(self, cursor, qualified_name):
         """

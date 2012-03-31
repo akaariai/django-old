@@ -88,6 +88,7 @@ class ConnectionHandler(object):
         # in the same instance. This needs to be a string unlike the other
         # TEST_ settings above.
         conn.setdefault('TEST_SCHEMA_PREFIX', '')
+        conn.setdefault('TEST_SCHEMAS', [])
 
     def __getitem__(self, alias):
         if hasattr(self._connections, alias):

@@ -18,6 +18,7 @@ class SQLCompiler(object):
         self.connection = connection
         self.using = using
         self.quote_cache = {}
+        self.has_qualified_names = None
 
     def pre_sql_setup(self):
         """
@@ -46,8 +47,18 @@ class SQLCompiler(object):
         if name in self.query.alias_map and not isinstance(name, tuple):
             self.quote_cache[name] = name
             return name
+        # If you have table "sn" in default schema and another table
+        # "someschema"."sn" some databases (our old friend MySQL) can't see
+        # that "sn" is a different table alias than "someschema"."sn". For that
+        # reason, on MySQL, we need to always schema-qualify names when there
+        # is any schema-qualified table in the query.
+        if self.has_qualified_names is None:
+            self.has_qualified_names = self.connection.schema != None
+            for alias in self.query.alias_map:
+                if isinstance(alias, tuple) and alias[0] is not None:
+                    self.has_qualified_names = True
         if isinstance(name, tuple):
-            r = self.connection.ops.qualified_name(name)
+            r = self.connection.ops.qualified_name(name, qualify_hint=self.has_qualified_names)
         else:
             r = self.connection.ops.quote_name(name)
         self.quote_cache[name] = r

@@ -15,6 +15,8 @@ except ImportError, e:
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured("Error loading MySQLdb module: %s" % e)
 
+from django.db.backends.util import truncate_name
+
 # We want version (1, 2, 1, 'final', 2) or later. We can't just use
 # lexicographic ordering in this check because then (1, 2, 1, 'gamma')
 # inadvertently passes the version test.
@@ -245,6 +247,26 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return "`%s`" % name
 
+    def schema_to_test_schema(self, schema):
+        # Prefix names by the connection's test_schema_prefix, except if the schema
+        # name is already a test_schema name.
+        if (self.connection.test_schema_prefix
+                and schema not in self.connection.settings_dict['TEST_SCHEMAS']):
+            return truncate_name('%s_%s' % (self.connection.test_schema_prefix, schema),
+                                 self.connection.ops.max_name_length())
+        return schema
+
+    def qualified_name(self, name, qualify_hint=False):
+        schema = name[0] or self.connection.schema
+        if not schema and qualify_hint:
+            schema = self.connection.settings_dict['NAME']
+        if schema:
+            schema = self.schema_to_test_schema(schema)
+            return "%s.%s" % (self.quote_name(schema),
+                              self.quote_name(name[1]))
+        else:
+            return self.quote_name(name[1])
+
     def random_function_sql(self):
         return 'RAND()'
 
@@ -255,7 +277,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         if tables:
             sql = ['SET FOREIGN_KEY_CHECKS = 0;']
             for table in tables:
-                sql.append('%s %s;' % (style.SQL_KEYWORD('TRUNCATE'), style.SQL_FIELD(self.quote_name(table))))
+                sql.append('%s %s;' % (style.SQL_KEYWORD('TRUNCATE'),
+                                       style.SQL_FIELD(self.qualified_name(table))))
             sql.append('SET FOREIGN_KEY_CHECKS = 1;')
 
             # 'ALTER TABLE table AUTO_INCREMENT = 1;'... style SQL statements
@@ -263,7 +286,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql.extend(["%s %s %s %s %s;" % \
                 (style.SQL_KEYWORD('ALTER'),
                  style.SQL_KEYWORD('TABLE'),
-                 style.SQL_TABLE(self.quote_name(sequence['table'])),
+                 style.SQL_TABLE(self.qualified_name((sequence['schema'], sequence['table']))),
                  style.SQL_KEYWORD('AUTO_INCREMENT'),
                  style.SQL_FIELD('= 1'),
                 ) for sequence in sequences])
@@ -347,6 +370,14 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.creation = DatabaseCreation(self)
         self.introspection = DatabaseIntrospection(self)
         self.validation = DatabaseValidation(self)
+    
+    def get_def_schema(self, schema):
+        schema = schema or self.schema or self.settings_dict['NAME']
+        return self.ops.schema_to_test_schema(schema)
+
+
+    def create_test_schema_prefix(self):
+        return self.alias
 
     def _valid_connection(self):
         if self.connection is not None:
@@ -442,8 +473,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         ALL IMMEDIATE")
         """
         cursor = self.cursor()
+        qn3 = self.ops.qualified_name
         if table_names is None:
-            table_names = self.introspection.get_table_list(cursor)
+            table_names = self.introspection.get_visible_tables_list(cursor)
         for table_name in table_names:
             primary_key_column_name = self.introspection.get_primary_key_column(cursor, table_name)
             if not primary_key_column_name:
@@ -451,15 +483,15 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             key_columns = self.introspection.get_key_columns(cursor, table_name)
             for column_name, referenced_table_name, referenced_column_name in key_columns:
                 cursor.execute("""
-                    SELECT REFERRING.`%s`, REFERRING.`%s` FROM `%s` as REFERRING
-                    LEFT JOIN `%s` as REFERRED
+                    SELECT REFERRING.`%s`, REFERRING.`%s` FROM %s as REFERRING
+                    LEFT JOIN %s as REFERRED
                     ON (REFERRING.`%s` = REFERRED.`%s`)
                     WHERE REFERRING.`%s` IS NOT NULL AND REFERRED.`%s` IS NULL"""
-                    % (primary_key_column_name, column_name, table_name, referenced_table_name,
+                    % (primary_key_column_name, column_name, qn3(table_name), qn3(referenced_table_name),
                     column_name, referenced_column_name, column_name, referenced_column_name))
                 for bad_row in cursor.fetchall():
                     raise utils.IntegrityError("The row in table '%s' with primary key '%s' has an invalid "
                         "foreign key: %s.%s contains a value '%s' that does not have a corresponding value in %s.%s."
-                        % (table_name, bad_row[0],
-                        table_name, column_name, bad_row[1],
-                        referenced_table_name, referenced_column_name))
+                        % (table_name[1], bad_row[0],
+                        table_name[1], column_name, bad_row[1],
+                        referenced_table_name[1], referenced_column_name))

@@ -88,3 +88,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         self.connection.connection.rollback()
         self.connection.connection.set_isolation_level(
                 psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+
+    def sql_destroy_schema(self, schema, style):
+        qn = self.connection.ops.quote_name
+        return "%s %s CASCADE;" % (style.SQL_KEYWORD('DROP SCHEMA'), qn(schema))
