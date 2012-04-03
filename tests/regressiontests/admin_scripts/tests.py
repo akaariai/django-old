@@ -3,8 +3,6 @@ A series of tests to establish that the command-line managment tools work as
 advertised - especially with regards to the handling of the DJANGO_SETTINGS_MODULE
 and default settings.py files.
 """
-from __future__ import with_statement, absolute_import
-
 import os
 import re
 import shutil
@@ -159,16 +157,6 @@ class AdminScriptTestCase(unittest.TestCase):
 
     def assertNoOutput(self, stream):
         "Utility assertion: assert that the given stream is empty"
-        # HACK: Under Windows, ignore warnings of the form:
-        # 'warning: Not loading directory '...\tests\regressiontests\locale': missing __init__.py'
-        # It has been impossible to filter them out using other means like:
-        # * Using warning.filterwarnings() (for the Python interpreter running the
-        #   tests) and/or
-        # * Using -Wignore:... (for the python interpreter spawned in self.run_test())
-        # Instead use a strategy copied from Mercurial's setup.py
-        if sys.platform == 'win32':
-            stream = [e for e in stream.splitlines()
-                if not e.startswith('warning: Not importing directory')]
         self.assertEqual(len(stream), 0, "Stream should be empty: actually contains '%s'" % stream)
 
     def assertOutput(self, stream, msg):

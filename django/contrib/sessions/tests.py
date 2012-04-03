@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 from datetime import datetime, timedelta
 import shutil
 import string
@@ -289,7 +287,9 @@ class DatabaseSessionTests(SessionTestsMixin, TestCase):
         self.assertEqual(self.session['y'], 2)
 
 
-DatabaseSessionWithTimeZoneTests = override_settings(USE_TZ=True)(DatabaseSessionTests)
+@override_settings(USE_TZ=True)
+class DatabaseSessionWithTimeZoneTests(DatabaseSessionTests):
+    pass
 
 
 class CacheDBSessionTests(SessionTestsMixin, TestCase):
@@ -310,7 +310,9 @@ class CacheDBSessionTests(SessionTestsMixin, TestCase):
         restore_warnings_state(warnings_state)
 
 
-CacheDBSessionWithTimeZoneTests = override_settings(USE_TZ=True)(CacheDBSessionTests)
+@override_settings(USE_TZ=True)
+class CacheDBSessionWithTimeZoneTests(CacheDBSessionTests):
+    pass
 
 
 # Don't need DB flushing for these tests, so can use unittest.TestCase as base class
@@ -405,10 +407,7 @@ class SessionMiddlewareTests(unittest.TestCase):
 
         # Handle the response through the middleware
         response = middleware.process_response(request, response)
-        # If it isn't in the cookie, that's fine (Python 2.5)
-        if 'httponly' in settings.SESSION_COOKIE_NAME:
-            self.assertFalse(
-               response.cookies[settings.SESSION_COOKIE_NAME]['httponly'])
+        self.assertFalse(response.cookies[settings.SESSION_COOKIE_NAME]['httponly'])
 
         self.assertNotIn('httponly',
                          str(response.cookies[settings.SESSION_COOKIE_NAME]))

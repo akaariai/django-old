@@ -3,9 +3,7 @@ Tests for django test runner
 """
 from __future__ import absolute_import
 
-import StringIO
 from optparse import make_option
-import warnings
 
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
@@ -13,7 +11,6 @@ from django import db
 from django.test import simple
 from django.test.simple import DjangoTestSuiteRunner, get_tests
 from django.test.testcases import connections_support_transactions
-from django.test.utils import get_warnings_state, restore_warnings_state
 from django.utils import unittest
 from django.utils.importlib import import_module
 
@@ -23,35 +20,6 @@ from ..admin_scripts.tests import AdminScriptTestCase
 TEST_APP_OK = 'regressiontests.test_runner.valid_app.models'
 TEST_APP_ERROR = 'regressiontests.test_runner.invalid_app.models'
 
-
-class DjangoTestRunnerTests(unittest.TestCase):
-    def setUp(self):
-        self._warnings_state = get_warnings_state()
-        warnings.filterwarnings('ignore', category=DeprecationWarning,
-                                module='django.test.simple')
-
-    def tearDown(self):
-        restore_warnings_state(self._warnings_state)
-
-    def test_failfast(self):
-        class MockTestOne(unittest.TestCase):
-            def runTest(self):
-                assert False
-        class MockTestTwo(unittest.TestCase):
-            def runTest(self):
-                assert False
-
-        suite = unittest.TestSuite([MockTestOne(), MockTestTwo()])
-        mock_stream = StringIO.StringIO()
-        dtr = simple.DjangoTestRunner(verbosity=0, failfast=False, stream=mock_stream)
-        result = dtr.run(suite)
-        self.assertEqual(2, result.testsRun)
-        self.assertEqual(2, len(result.failures))
-
-        dtr = simple.DjangoTestRunner(verbosity=0, failfast=True, stream=mock_stream)
-        result = dtr.run(suite)
-        self.assertEqual(1, result.testsRun)
-        self.assertEqual(1, len(result.failures))
 
 class DependencyOrderingTests(unittest.TestCase):
 

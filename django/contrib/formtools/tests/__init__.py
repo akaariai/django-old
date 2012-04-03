@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib.formtools import preview, utils
 from django.contrib.formtools.wizard import FormWizard
 from django.test import TestCase
-from django.test.utils import get_warnings_state, restore_warnings_state
+from django.test.utils import override_settings
 from django.utils import unittest
 
 from django.contrib.formtools.tests.wizard import *
@@ -30,36 +30,21 @@ class TestFormPreview(preview.FormPreview):
     def done(self, request, cleaned_data):
         return http.HttpResponse(success_string)
 
-
-class FormToolsTestCase(TestCase):
-    def setUp(self):
-        # in the test runner use templates/tests/ to provide base.html
-        self.old_TEMPLATE_DIRS = settings.TEMPLATE_DIRS
-        settings.TEMPLATE_DIRS = list(settings.TEMPLATE_DIRS) + [
-            os.path.join(os.path.dirname(__file__), 'templates')]
-
-    def tearDown(self):
-        settings.TEMPLATE_DIRS = self.old_TEMPLATE_DIRS
-
-
-class PreviewTests(FormToolsTestCase):
+@override_settings(
+    TEMPLATE_DIRS=(
+        os.path.join(os.path.dirname(__file__), 'templates'),
+    ),
+)
+class PreviewTests(TestCase):
     urls = 'django.contrib.formtools.tests.urls'
 
     def setUp(self):
         super(PreviewTests, self).setUp()
-        self.save_warnings_state()
-        warnings.filterwarnings('ignore', category=DeprecationWarning,
-                                module='django.contrib.formtools.utils')
-
         # Create a FormPreview instance to share between tests
         self.preview = preview.FormPreview(TestForm)
         input_template = '<input type="hidden" name="%s" value="%s" />'
         self.input = input_template % (self.preview.unused_name('stage'), "%d")
         self.test_data = {'field1':u'foo', 'field1_':u'asdf'}
-
-    def tearDown(self):
-        super(PreviewTests, self).tearDown()
-        self.restore_warnings_state()
 
     def test_unused_name(self):
         """
@@ -172,39 +157,6 @@ class PreviewTests(FormToolsTestCase):
         self.assertNotEqual(response.content, success_string)
 
 
-class SecurityHashTests(unittest.TestCase):
-    def setUp(self):
-        self._warnings_state = get_warnings_state()
-        warnings.filterwarnings('ignore', category=DeprecationWarning,
-                                module='django.contrib.formtools.utils')
-
-    def tearDown(self):
-        restore_warnings_state(self._warnings_state)
-
-    def test_textfield_hash(self):
-        """
-        Regression test for #10034: the hash generation function should ignore
-        leading/trailing whitespace so as to be friendly to broken browsers that
-        submit it (usually in textareas).
-        """
-        f1 = HashTestForm({'name': 'joe', 'bio': 'Nothing notable.'})
-        f2 = HashTestForm({'name': '  joe', 'bio': 'Nothing notable.  '})
-        hash1 = utils.security_hash(None, f1)
-        hash2 = utils.security_hash(None, f2)
-        self.assertEqual(hash1, hash2)
-
-    def test_empty_permitted(self):
-        """
-        Regression test for #10643: the security hash should allow forms with
-        empty_permitted = True, or forms where data has not changed.
-        """
-        f1 = HashTestBlankForm({})
-        f2 = HashTestForm({}, empty_permitted=True)
-        hash1 = utils.security_hash(None, f1)
-        hash2 = utils.security_hash(None, f2)
-        self.assertEqual(hash1, hash2)
-
-
 class FormHmacTests(unittest.TestCase):
     """
     Same as SecurityHashTests, but with form_hmac
@@ -257,7 +209,13 @@ class DummyRequest(http.HttpRequest):
         self._dont_enforce_csrf_checks = True
 
 
-class WizardTests(FormToolsTestCase):
+@override_settings(
+    SECRET_KEY="123",
+    TEMPLATE_DIRS=(
+        os.path.join(os.path.dirname(__file__), 'templates'),
+    ),
+)
+class WizardTests(TestCase):
     urls = 'django.contrib.formtools.tests.urls'
     input_re = re.compile('name="([^"]+)" value="([^"]+)"')
     wizard_step_data = (
@@ -273,16 +231,6 @@ class WizardTests(FormToolsTestCase):
             '2-random_crap': 'blah blah',
         }
     )
-
-    def setUp(self):
-        super(WizardTests, self).setUp()
-        # Use a known SECRET_KEY to make security_hash tests deterministic
-        self.old_SECRET_KEY = settings.SECRET_KEY
-        settings.SECRET_KEY = "123"
-
-    def tearDown(self):
-        super(WizardTests, self).tearDown()
-        settings.SECRET_KEY = self.old_SECRET_KEY
 
     def test_step_starts_at_zero(self):
         """

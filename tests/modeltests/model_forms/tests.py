@@ -1,4 +1,4 @@
-from __future__ import with_statement, absolute_import
+from __future__ import absolute_import
 
 import datetime
 import os
@@ -1369,6 +1369,19 @@ class OldFormForXTests(TestCase):
         instance = f.save()
         self.assertEqual(instance.image.name, 'foo/test4.png')
         instance.delete()
+
+        # Test image field when cStringIO is not available
+        from django.forms import fields
+        from StringIO import StringIO
+        old_StringIO = fields.StringIO
+        fields.StringIO = StringIO
+        try:
+            f = ImageFileForm(
+                data={'description': u'An image'},
+                files={'image': SimpleUploadedFile('test.png', image_data)})
+            self.assertEqual(f.is_valid(), True)
+        finally:
+            fields.StringIO = old_StringIO
 
     def test_media_on_modelform(self):
         # Similar to a regular Form class you can define custom media to be used on

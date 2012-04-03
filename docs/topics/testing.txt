@@ -1450,13 +1450,12 @@ The decorator can also be applied to test case classes::
     from django.test import TestCase
     from django.test.utils import override_settings
 
+    @override_settings(LOGIN_URL='/other/login/')
     class LoginTestCase(TestCase):
 
         def test_login(self):
             response = self.client.get('/sekrit/')
             self.assertRedirects(response, '/other/login/?next=/sekrit/')
-
-    LoginTestCase = override_settings(LOGIN_URL='/other/login/')(LoginTestCase)
 
 .. note::
 
@@ -1466,19 +1465,6 @@ The decorator can also be applied to test case classes::
     different name than ``LoginTestCase``, you may be surprised to find that
     the original ``LoginTestCase`` is still equally affected by the
     decorator.
-
-On Python 2.6 and higher you can also use the well known decorator syntax to
-decorate the class::
-
-    from django.test import TestCase
-    from django.test.utils import override_settings
-
-    @override_settings(LOGIN_URL='/other/login/')
-    class LoginTestCase(TestCase):
-
-        def test_login(self):
-            response = self.client.get('/sekrit/')
-            self.assertRedirects(response, '/other/login/?next=/sekrit/')
 
 .. note::
 
@@ -1605,10 +1591,6 @@ your test suite.
 
     You can use this as a context manager, like this::
 
-        # This is necessary in Python 2.5 to enable the with statement.
-        # In 2.6 and up, it's not necessary.
-        from __future__ import with_statement
-
         with self.assertTemplateUsed('index.html'):
             render_to_string('index.html')
         with self.assertTemplateUsed(template_name='index.html'):
@@ -1670,12 +1652,7 @@ your test suite.
 
         self.assertNumQueries(7, lambda: my_function(using=7))
 
-    If you're using Python 2.5 or greater you can also use this as a context
-    manager::
-
-        # This is necessary in Python 2.5 to enable the with statement, in 2.6
-        # and up it is no longer necessary.
-        from __future__ import with_statement
+    You can also use this as a context manager::
 
         with self.assertNumQueries(2):
             Person.objects.create(name="Aaron")
@@ -2168,7 +2145,7 @@ utility methods in the ``django.test.utils`` module.
 
     Performs any global pre-test setup, such as the installing the
     instrumentation of the template rendering system and setting up
-    the dummy ``SMTPConnection``.
+    the dummy email outbox.
 
 .. function:: teardown_test_environment()
 

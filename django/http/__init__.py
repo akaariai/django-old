@@ -9,26 +9,13 @@ import warnings
 
 from pprint import pformat
 from urllib import urlencode, quote
-from urlparse import urljoin
+from urlparse import urljoin, parse_qsl
 try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
-try:
-    # The mod_python version is more efficient, so try importing it first.
-    from mod_python.util import parse_qsl
-except ImportError:
-    try:
-        # Python 2.6 and greater
-        from urlparse import parse_qsl
-    except ImportError:
-        # Python 2.5. Works on Python 2.6 but raises PendingDeprecationWarning
-        from cgi import parse_qsl
 
 import Cookie
-# httponly support exists in Python 2.6's Cookie library,
-# but not in Python 2.5.
-_morsel_supports_httponly = 'httponly' in Cookie.Morsel._reserved
 # Some versions of Python 2.7 and later won't need this encoding bug fix:
 _cookie_encodes_correctly = Cookie.SimpleCookie().value_encode(';') == (';', '"\\073"')
 # See ticket #13007, http://bugs.python.org/issue2193 and http://trac.edgewall.org/ticket/2256
@@ -39,28 +26,10 @@ try:
 except Cookie.CookieError:
     _cookie_allows_colon_in_names = False
 
-if _morsel_supports_httponly and _cookie_encodes_correctly and _cookie_allows_colon_in_names:
+if _cookie_encodes_correctly and _cookie_allows_colon_in_names:
     SimpleCookie = Cookie.SimpleCookie
 else:
-    if not _morsel_supports_httponly:
-        class Morsel(Cookie.Morsel):
-            def __setitem__(self, K, V):
-                K = K.lower()
-                if K == "httponly":
-                    if V:
-                        # The superclass rejects httponly as a key,
-                        # so we jump to the grandparent.
-                        super(Cookie.Morsel, self).__setitem__(K, V)
-                else:
-                    super(Morsel, self).__setitem__(K, V)
-
-            def OutputString(self, attrs=None):
-                output = super(Morsel, self).OutputString(attrs)
-                if "httponly" in self:
-                    output += "; httponly"
-                return output
-    else:
-        Morsel = Cookie.Morsel
+    Morsel = Cookie.Morsel
 
     class SimpleCookie(Cookie.SimpleCookie):
         if not _cookie_encodes_correctly:
@@ -88,7 +57,7 @@ else:
 
                 return val, encoded
 
-        if not _cookie_allows_colon_in_names or not _morsel_supports_httponly:
+        if not _cookie_allows_colon_in_names:
             def load(self, rawdata):
                 self.bad_cookies = set()
                 super(SimpleCookie, self).load(rawdata)
@@ -106,11 +75,6 @@ else:
                     self.bad_cookies.add(key)
                     dict.__setitem__(self, key, Cookie.Morsel())
 
-
-class CompatCookie(SimpleCookie):
-    def __init__(self, *args, **kwargs):
-        super(CompatCookie, self).__init__(*args, **kwargs)
-        warnings.warn("CompatCookie is deprecated. Use django.http.SimpleCookie instead.", DeprecationWarning)
 
 from django.conf import settings
 from django.core import signing
@@ -374,7 +338,7 @@ class HttpRequest(object):
     ## File-like and iterator interface.
     ##
     ## Expects self._stream to be set to an appropriate source of bytes by
-    ## a corresponding request subclass (WSGIRequest or ModPythonRequest).
+    ## a corresponding request subclass (e.g. WSGIRequest).
     ## Also when request data has already been read by request.POST or
     ## request.body, self._stream points to a StringIO instance
     ## containing that data.

@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 import datetime
 import os
 import sys
@@ -76,7 +74,7 @@ class BaseDateTimeTests(TestCase):
             time.tzset()
 
 
-#@override_settings(USE_TZ=False)
+@override_settings(USE_TZ=False)
 class LegacyDatabaseTests(BaseDateTimeTests):
 
     def test_naive_datetime(self):
@@ -272,14 +270,11 @@ class LegacyDatabaseTests(BaseDateTimeTests):
                 [event],
                 transform=lambda d: d)
 
-LegacyDatabaseTests = override_settings(USE_TZ=False)(LegacyDatabaseTests)
 
-
-#@override_settings(USE_TZ=True)
+@override_settings(USE_TZ=True)
 class NewDatabaseTests(BaseDateTimeTests):
 
     @requires_tz_support
-    @skipIf(sys.version_info < (2, 6), "this test requires Python >= 2.6")
     def test_naive_datetime(self):
         dt = datetime.datetime(2011, 9, 1, 13, 20, 30)
         with warnings.catch_warnings(record=True) as recorded:
@@ -293,7 +288,6 @@ class NewDatabaseTests(BaseDateTimeTests):
         self.assertEqual(event.dt, dt.replace(tzinfo=EAT))
 
     @requires_tz_support
-    @skipIf(sys.version_info < (2, 6), "this test requires Python >= 2.6")
     def test_datetime_from_date(self):
         dt = datetime.date(2011, 9, 1)
         with warnings.catch_warnings(record=True) as recorded:
@@ -306,7 +300,6 @@ class NewDatabaseTests(BaseDateTimeTests):
         self.assertEqual(event.dt, datetime.datetime(2011, 9, 1, tzinfo=EAT))
 
     @requires_tz_support
-    @skipIf(sys.version_info < (2, 6), "this test requires Python >= 2.6")
     @skipUnlessDBFeature('supports_microsecond_precision')
     def test_naive_datetime_with_microsecond(self):
         dt = datetime.datetime(2011, 9, 1, 13, 20, 30, 405060)
@@ -321,7 +314,6 @@ class NewDatabaseTests(BaseDateTimeTests):
         self.assertEqual(event.dt, dt.replace(tzinfo=EAT))
 
     @requires_tz_support
-    @skipIf(sys.version_info < (2, 6), "this test requires Python >= 2.6")
     @skipIfDBFeature('supports_microsecond_precision')
     def test_naive_datetime_with_microsecond_unsupported(self):
         dt = datetime.datetime(2011, 9, 1, 13, 20, 30, 405060)
@@ -404,7 +396,6 @@ class NewDatabaseTests(BaseDateTimeTests):
         self.assertEqual(Event.objects.filter(dt__range=(prev, next)).count(), 1)
 
     @requires_tz_support
-    @skipIf(sys.version_info < (2, 6), "this test requires Python >= 2.6")
     def test_query_filter_with_naive_datetime(self):
         dt = datetime.datetime(2011, 9, 1, 12, 20, 30, tzinfo=EAT)
         Event.objects.create(dt=dt)
@@ -496,8 +487,6 @@ class NewDatabaseTests(BaseDateTimeTests):
         # Regression for #17294
         e = MaybeEvent.objects.create()
         self.assertEqual(e.dt, None)
-
-NewDatabaseTests = override_settings(USE_TZ=True)(NewDatabaseTests)
 
 
 class SerializationTests(BaseDateTimeTests):
@@ -653,7 +642,7 @@ class SerializationTests(BaseDateTimeTests):
             obj = serializers.deserialize('yaml', data).next().object
             self.assertEqual(obj.dt.replace(tzinfo=UTC), dt)
 
-#@override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)
+@override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)
 class TemplateTests(BaseDateTimeTests):
 
     @requires_tz_support
@@ -892,9 +881,8 @@ class TemplateTests(BaseDateTimeTests):
         with timezone.override(ICT):
             self.assertEqual(tpl.render(Context({})), "+0700")
 
-TemplateTests = override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)(TemplateTests)
 
-#@override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=False)
+@override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=False)
 class LegacyFormsTests(BaseDateTimeTests):
 
     def test_form(self):
@@ -928,9 +916,8 @@ class LegacyFormsTests(BaseDateTimeTests):
         e = Event.objects.get()
         self.assertEqual(e.dt, datetime.datetime(2011, 9, 1, 13, 20, 30))
 
-LegacyFormsTests = override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=False)(LegacyFormsTests)
 
-#@override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)
+@override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)
 class NewFormsTests(BaseDateTimeTests):
 
     @requires_tz_support
@@ -975,9 +962,8 @@ class NewFormsTests(BaseDateTimeTests):
         e = Event.objects.get()
         self.assertEqual(e.dt, datetime.datetime(2011, 9, 1, 10, 20, 30, tzinfo=UTC))
 
-NewFormsTests = override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)(NewFormsTests)
 
-#@override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)
+@override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)
 class AdminTests(BaseDateTimeTests):
 
     urls = 'modeltests.timezones.urls'
@@ -1027,8 +1013,6 @@ class AdminTests(BaseDateTimeTests):
         with timezone.override(ICT):
             response = self.client.get(reverse('admin:timezones_timestamp_change', args=(t.pk,)))
         self.assertContains(response, t.created.astimezone(ICT).isoformat())
-
-AdminTests = override_settings(DATETIME_FORMAT='c', USE_L10N=False, USE_TZ=True)(AdminTests)
 
 
 class UtilitiesTests(BaseDateTimeTests):

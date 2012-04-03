@@ -1,5 +1,5 @@
 # coding: utf-8
-from __future__ import with_statement, absolute_import
+from __future__ import absolute_import
 
 import os
 import re
@@ -3315,7 +3315,7 @@ try:
 except ImportError:
     docutils = None
 
-#@unittest.skipUnless(docutils, "no docutils installed.")
+@unittest.skipUnless(docutils, "no docutils installed.")
 class AdminDocsTest(TestCase):
     urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
@@ -3357,7 +3357,6 @@ class AdminDocsTest(TestCase):
         self.assertContains(response, '<h3 id="built_in-add">add</h3>', html=True)
         self.assertContains(response, '<li><a href="#built_in-add">add</a></li>', html=True)
 
-AdminDocsTest = unittest.skipUnless(docutils, "no docutils installed.")(AdminDocsTest)
 
 class ValidXHTMLTests(TestCase):
     urls = "regressiontests.admin_views.urls"
