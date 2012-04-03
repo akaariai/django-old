@@ -1,4 +1,5 @@
 from django.db.backends import BaseDatabaseIntrospection
+from django.db.models.options import QName
 from MySQLdb import ProgrammingError, OperationalError
 from MySQLdb.constants import FIELD_TYPE
 import re
@@ -34,8 +35,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
     def get_qualified_tables_list(self, cursor, schemas):
         schemas = list(schemas)
-        schemas = [self.connection.ops.schema_to_test_schema(s) for s in schemas]
-        schemas.append(self.connection.get_def_schema(None))
+        schemas = [self.connection.convert_schema(s) for s in schemas]
+        schemas.append(self.connection.convert_schema(None))
         param_list = ', '.join(['%s']*len(schemas))
         cursor.execute("""
             SELECT table_schema, table_name
@@ -80,7 +81,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         """
         key_columns = []
         schema = qualified_name[0] or self.connection.schema or self.connection.settings_dict['NAME']
-        schema = self.connection.ops.schema_to_test_schema(schema)
+        schema = self.connection.convert_schema(schema)
         qualified_name = schema, qualified_name[1]
         try:
             cursor.execute("""
@@ -143,7 +144,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # format as qualified_name gives. In plain case however we use
         # the given name as is. 
         if isinstance(name, tuple):
-            schema = self.connection.get_def_schema(name[0])
-            return schema, name[1]
+            schema = self.connection.convert_schema(name.schema)
+            return QName(schema, name.table)
         else:
             return name

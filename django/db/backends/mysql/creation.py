@@ -78,7 +78,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         schema = model._meta.db_schema or self.connection.schema
         schema_prefix = ''
         if schema:
-             schema = self.connection.ops.schema_to_test_schema(schema)
+             schema = self.connection.convert_schema(schema)
              schema_prefix = truncate_name(schema, self.connection.ops.max_name_length() / 2) + '_'
         i_name = '%s%s_%s' % (schema_prefix, model._meta.db_table, self._digest(col))
         i_name = self.connection.ops.quote_name(truncate_name(i_name, self.connection.ops.max_name_length()))

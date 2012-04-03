@@ -95,7 +95,7 @@ class Command(NoArgsCommand):
                 if verbosity >= 3:
                     print "Processing %s.%s model" % (app_name, model._meta.object_name)
                 sql = []
-                schema = model._meta.qname.schema
+                schema = model._meta.qname[0]
                 if schema and schema not in seen_schemas:
                     q = connection.creation.sql_create_schema(schema, self.style)
                     if q:

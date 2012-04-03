@@ -53,11 +53,8 @@ class BaseDatabaseWrapper(object):
         return self.settings_dict['TEST_SCHEMA_PREFIX']
     test_schema_prefix = property(_get_test_schema_prefix)
 
-    def get_def_schema(self, schema):
+    def convert_schema(self, schema):
         return schema or self.schema
-
-    def create_test_schema_prefix(self):
-        return ""
 
     def _commit(self):
         if self.connection is not None:
@@ -430,13 +427,10 @@ class BaseDatabaseFeatures(object):
     # Support for the DISTINCT ON clause
     can_distinct_on_fields = False
 
-    supports_schemas = False
-    # If the database does not have multiple database support
-    # added with multiple schema support then databases and 
-    # schemas live in the same namespace. The has_real_schemas
-    # flag indicates that there are different namespaces Django
-    # can use for schemas and databases.
-    has_real_schemas = False
+    # If the database has databases and schemas as different concepts
+    # or plain fakes schemas, it is safe to skip conflicts checking in
+    # testing on that database.
+    safe_reuse_schemas = False
 
     def __init__(self, connection):
         self.connection = connection
@@ -702,9 +696,6 @@ class BaseDatabaseOperations(object):
         """
         raise NotImplementedError()
 
-    def schema_to_test_schema(self, schema):
-        return schema
-
     def qualified_name(self, qualified_name, qualify_hint=False):
         """
         Formats the given schema, table_name tuple into database's
@@ -717,14 +708,6 @@ class BaseDatabaseOperations(object):
         even if there is no schema in the given qualfied_name parameter.
         """
         raise NotImplementedError
-
-    def prep_db_index(self, db_schema, db_index):
-        """
-        Prepares and formats the table index name if necessary.
-        Just returns quoted db_index if not supported.
-        """
-        assert False
-        return self.quote_name(db_index)
 
     def random_function_sql(self):
         """
@@ -968,12 +951,16 @@ class BaseDatabaseIntrospection(object):
         if schemas is None:
             return self.get_visible_tables_list(cursor)
         else:
-            return self.get_qualified_tables_list(cursor, schemas)
+            return 
         
     def all_qualified_names(self, converted=False):
-        converter = self.table_name_converter
-        nonqualified_tables = self.qualified_names()
-        qualified_tables = self.qualified_names(schemas=self.get_schemas())
+        cursor = self.connection.cursor()
+        nonqualified_tables = self.get_visible_tables_list(cursor)
+        qualified_tables = self.get_qualified_tables_list(cursor, self.get_schemas())
+        if converted:
+            converter = self.table_name_converter
+        else:
+            converter = lambda x: x
         return set([converter((None, t), plain=True) for _, t in nonqualified_tables] +
                    [converter(t, plain=True) for t in qualified_tables])
     
@@ -983,9 +970,6 @@ class BaseDatabaseIntrospection(object):
         tables in the given schemas.
         """
         return []
-
-    def all_table_names(self):
-        return self.qualified_names() + self.table_names()
 
     def get_schema_list(self, cursor):
         "Returns a list of schemas that exist in the database"

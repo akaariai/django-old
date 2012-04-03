@@ -84,6 +84,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_mixed_date_datetime_comparisons = False
     has_bulk_insert = True
     can_combine_inserts_with_and_without_auto_increment_pk = True
+    safe_reuse_schemas = True
 
     def _supports_stddev(self):
         """Confirm support for STDDEV and related stats functions
@@ -252,7 +253,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = DatabaseIntrospection(self)
         self.validation = BaseDatabaseValidation(self)
 
-    def get_def_schema(self, schema):
+    def convert_schema(self, schema):
+        # No real schema support.
         return None
 
     def _sqlite_create_connection(self):

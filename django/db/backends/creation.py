@@ -18,7 +18,6 @@ class BaseDatabaseCreation(object):
     destruction of test databases.
     """
     data_types = {}
-    safe_reuse_schemas = set()
 
     def __init__(self, connection):
         self.connection = connection
@@ -305,7 +304,7 @@ class BaseDatabaseCreation(object):
 
         self.connection.close()
         self.connection.settings_dict["NAME"] = test_database_name
-        schemas = [self.connection.ops.schema_to_test_schema(s) for s in schemas]
+        schemas = ['%s%s' % (self.connection.test_schema_prefix, s) for s in schemas]
 
         # Create the test schemas.
         created_schemas = self._create_test_schemas(verbosity, schemas, autoclobber)
@@ -349,9 +348,9 @@ class BaseDatabaseCreation(object):
     def _create_test_schemas(self, verbosity, schemas, autoclobber):
         style = no_style()
         cursor = self.connection.cursor()
-        existing_schemas = self.connection.introspection.get_schema_list(cursor)
-        safe_reuse = self.safe_reuse_schemas
-        conflicts = [s for s in existing_schemas if s in schemas and s not in safe_reuse]
+        if not self.connection.features.safe_reuse_schemas:
+            existing_schemas = self.connection.introspection.get_schema_list(cursor)
+            conflicts = [s for s in existing_schemas if s in schemas]
         if conflicts:
             print 'The following schemas already exists: %s' % ', '.join(conflicts) 
             if not autoclobber:
@@ -475,15 +474,14 @@ class BaseDatabaseCreation(object):
         # manually.
         cursor = self.connection.cursor()
         style = no_style()
-        if not self.connection.features.has_real_schemas:
-            try:
-                self.connection.disable_constraint_checking()
-                for schema in created_schemas:
-                    if verbosity >= 1:
-                        print "Destroying schema '%s'..." % schema
-                    cursor.execute(self.sql_destroy_schema(schema, style))
-            finally:
-                self.connection.enable_constraint_checking()
+        try:
+            self.connection.disable_constraint_checking()
+            for schema in created_schemas:
+                if verbosity >= 1:
+                    print "Destroying schema '%s'..." % schema
+                cursor.execute(self.sql_destroy_schema(schema, style))
+        finally:
+            self.connection.enable_constraint_checking()
         self.connection.close()
         test_database_name = self.connection.settings_dict['NAME']
                     

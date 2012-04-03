@@ -83,8 +83,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     has_bulk_insert = True
     supports_tablespaces = True
     can_distinct_on_fields = True
-    supports_schemas = True
-    has_real_schemas = True
+    safe_reuse_schemas = True
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'postgresql'
@@ -122,10 +121,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = DatabaseIntrospection(self)
         self.validation = BaseDatabaseValidation(self)
         self._pg_version = None
-
-    def get_def_schema(self, schema):
-        # TODO: introspect on first connect what is the real default schema
-        return schema or self.schema or 'public'
 
     def check_constraints(self, table_names=None):
         """

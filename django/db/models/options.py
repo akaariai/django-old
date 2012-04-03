@@ -1,6 +1,5 @@
 import re
 from bisect import bisect
-from collections import namedtuple
 
 from django.conf import settings
 from django.db.models.related import RelatedObject
@@ -20,8 +19,6 @@ DEFAULT_NAMES = ('verbose_name', 'verbose_name_plural', 'db_table', 'ordering',
                  'order_with_respect_to', 'app_label', 'db_tablespace',
                  'abstract', 'managed', 'proxy', 'auto_created', 'db_schema')
 
-QName = namedtuple('QName', 'schema table')
-
 class Options(object):
     def __init__(self, meta, app_label=None):
         self.local_fields, self.local_many_to_many = [], []
@@ -30,7 +27,7 @@ class Options(object):
         self.verbose_name_plural = None
         self.db_table = ''
         self.db_schema = ''
-        self.qname = QName('', '')
+        self.qname = ('', '')
         self.ordering = []
         self.unique_together =  []
         self.permissions =  []

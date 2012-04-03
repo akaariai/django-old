@@ -247,25 +247,16 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return "`%s`" % name
 
-    def schema_to_test_schema(self, schema):
-        # Prefix names by the connection's test_schema_prefix, except if the schema
-        # name is already a test_schema name.
-        if (self.connection.test_schema_prefix
-                and schema not in self.connection.settings_dict['TEST_SCHEMAS']):
-            return truncate_name('%s_%s' % (self.connection.test_schema_prefix, schema),
-                                 self.connection.ops.max_name_length())
-        return schema
-
-    def qualified_name(self, name, qualify_hint=False):
-        schema = name[0] or self.connection.schema
+    def qualified_name(self, qname, qualify_hint=False):
+        schema = qname[0] or self.connection.schema
         if not schema and qualify_hint:
             schema = self.connection.settings_dict['NAME']
         if schema:
-            schema = self.schema_to_test_schema(schema)
+            schema = self.connection.convert_schema(schema)
             return "%s.%s" % (self.quote_name(schema),
-                              self.quote_name(name[1]))
+                              self.quote_name(qname[1]))
         else:
-            return self.quote_name(name[1])
+            return self.quote_name(qname[1])
 
     def random_function_sql(self):
         return 'RAND()'
@@ -371,13 +362,13 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = DatabaseIntrospection(self)
         self.validation = DatabaseValidation(self)
     
-    def get_def_schema(self, schema):
+    def convert_schema(self, schema):
         schema = schema or self.schema or self.settings_dict['NAME']
-        return self.ops.schema_to_test_schema(schema)
-
-
-    def create_test_schema_prefix(self):
-        return self.alias
+        if (self.connection.test_schema_prefix
+                and schema not in self.connection.settings_dict['TEST_SCHEMAS']):
+            return truncate_name('%s_%s' % (self.connection.test_schema_prefix, schema),
+                                 self.connection.ops.max_name_length())
+        return schema
 
     def _valid_connection(self):
         if self.connection is not None:
