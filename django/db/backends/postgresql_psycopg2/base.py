@@ -122,6 +122,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.validation = BaseDatabaseValidation(self)
         self._pg_version = None
 
+    def _get_test_schema_prefix(self):
+        return ''
+    test_schema_prefix = property(_get_test_schema_prefix)
+
     def check_constraints(self, table_names=None):
         """
         To check constraints, we set constraints to immediate. Then, when, we're done we must ensure they

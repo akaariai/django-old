@@ -138,7 +138,7 @@ class IntrospectionTests(TestCase):
             # do not know what that schema is. So, test everything except the
             # schema.
             # TODO: this testing logic is UGLY!
-            schema = connection.convert_schema(Reporter._meta.qname.schema)
+            schema = connection.convert_schema(Reporter._meta.qname[1])
             self.assertTrue(3 in relations)
             relations[3] = (relations[3][0], (schema, relations[3][1][1]))
             self.assertEqual(relations, {3: (0, rep_tbl)})

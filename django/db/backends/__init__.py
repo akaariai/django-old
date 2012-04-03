@@ -956,7 +956,8 @@ class BaseDatabaseIntrospection(object):
     def all_qualified_names(self, converted=False):
         cursor = self.connection.cursor()
         nonqualified_tables = self.get_visible_tables_list(cursor)
-        qualified_tables = self.get_qualified_tables_list(cursor, self.get_schemas())
+        schemas = self.connection.creation.get_schemas()
+        qualified_tables = self.get_qualified_tables_list(cursor, schemas)
         if converted:
             converter = self.table_name_converter
         else:

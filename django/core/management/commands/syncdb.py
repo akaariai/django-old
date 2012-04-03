@@ -117,7 +117,7 @@ class Command(NoArgsCommand):
                         print "Creating table %s" % model._meta.db_table
                 for statement in sql:
                     cursor.execute(statement)
-                tables.append(connection.introspection.table_name_converter(model._meta.qualified_name))
+                tables.add(connection.introspection.table_name_converter(model._meta.qualified_name))
 
 
         transaction.commit_unless_managed(using=db)

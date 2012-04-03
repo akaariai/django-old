@@ -1,5 +1,4 @@
 from django.db.backends import BaseDatabaseIntrospection
-from django.db.models.options import QName
 from MySQLdb import ProgrammingError, OperationalError
 from MySQLdb.constants import FIELD_TYPE
 import re
@@ -145,6 +144,6 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # the given name as is. 
         if isinstance(name, tuple):
             schema = self.connection.convert_schema(name.schema)
-            return QName(schema, name.table)
+            return (schema, name.table)
         else:
             return name
