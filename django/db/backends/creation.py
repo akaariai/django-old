@@ -300,8 +300,7 @@ class BaseDatabaseCreation(object):
             print "Creating test database for alias '%s'%s..." % (
                 self.connection.alias, test_db_repr)
 
-        schema_apps = self._get_app_with_schemas()
-        schemas = self._get_schemas(schema_apps)
+        schemas = self.get_schemas()
         self._create_test_db(verbosity, autoclobber, schemas)
 
         self.connection.close()
@@ -384,33 +383,20 @@ class BaseDatabaseCreation(object):
             self.connection.settings_dict['TEST_SCHEMAS'].append(schema)
         return to_create
 
-    def _get_schemas(self, apps):
+    def get_schemas(self):
         from django.db import models
+        apps = models.get_apps()
         schemas = set()
         for app in apps:
             app_models = models.get_models(app, include_auto_created=True)
             for model in app_models:
                 schema = model._meta.db_schema
-                if not schema or schema in schemas:
-                    continue
-                schemas.add(schema)
+                if schema:
+                    schemas.add(schema)
         conn_default_schema = self.connection.settings_dict['SCHEMA']
         if conn_default_schema:
             schemas.add(conn_default_schema)
         return schemas
-
-    def _get_app_with_schemas(self):
-        from django.db import models
-        apps = models.get_apps()
-        schema_apps = set()
-        for app in apps:
-            app_models = models.get_models(app, include_auto_created=True)
-            for model in app_models:
-                schema = model._meta.db_schema
-                if not schema or app in schema_apps:
-                    continue
-                schema_apps.add(app)
-        return schema_apps
 
     def _get_test_db_name(self):
         """

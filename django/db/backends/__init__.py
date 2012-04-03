@@ -960,14 +960,22 @@ class BaseDatabaseIntrospection(object):
         """
         return []
 
-    def qualified_names(self):
+    def qualified_names(self, schemas=None):
         """
         Returns qualified table names for all schemas Django is using.
         """
         cursor = self.connection.cursor()
-        schema_apps = self.connection.creation._get_app_with_schemas()
-        schemas = self.connection.creation._get_schemas(schema_apps)
-        return self.get_qualified_tables_list(cursor, schemas)
+        if schemas is None:
+            return self.get_visible_tables_list(cursor)
+        else:
+            return self.get_qualified_tables_list(cursor, schemas)
+        
+    def all_qualified_names(self, converted=False):
+        converter = self.table_name_converter
+        nonqualified_tables = self.qualified_names()
+        qualified_tables = self.qualified_names(schemas=self.get_schemas())
+        return set([converter((None, t), plain=True) for _, t in nonqualified_tables] +
+                   [converter(t, plain=True) for t in qualified_tables])
     
     def get_qualified_tables_list(self, cursor, schemas):
         """
@@ -1011,8 +1019,7 @@ class BaseDatabaseIntrospection(object):
         tables = list(tables)
         found_tables = []
         if only_existing:
-            existing_tables = set([self.table_name_converter(t, True)
-                                   for t in self.all_table_names()])
+            existing_tables = self.all_qualified_names(converted=True)
             found_tables.extend([
                 t for t in tables
                 if self.table_name_converter(t) in existing_tables

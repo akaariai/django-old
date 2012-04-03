@@ -56,12 +56,13 @@ class Command(NoArgsCommand):
         connection = connections[db]
         cursor = connection.cursor()
         converter = connection.introspection.table_name_converter
-
+        # We might fetch the same table multiple times - once as qualified and
+        # once as visible table (None, t). That is wanted, so that we can easily
+        # see if a model with schema = None is installed, as well as if model with
+        # locked schema is installed.
+        tables = connection.introspection.all_qualified_names(converted=True)
+        
         # Get a list of already installed *models* so that references work right.
-        nonqualified_tables = connection.introspection.table_names()
-        qualified_tables = connection.introspection.qualified_names()
-        tables = ([converter((None, t), plain=True) for _, t in nonqualified_tables] +
-                 [converter(t, plain=True) for t in qualified_tables])
         seen_models = connection.introspection.installed_models(tables)
         created_models = set()
         pending_references = {}
@@ -94,11 +95,12 @@ class Command(NoArgsCommand):
                 if verbosity >= 3:
                     print "Processing %s.%s model" % (app_name, model._meta.object_name)
                 sql = []
-                if model._meta.db_schema and model._meta.db_schema not in seen_schemas:
-                    q = connection.creation.sql_create_schema(model._meta.db_schema, self.style)
+                schema = model._meta.qname.schema
+                if schema and schema not in seen_schemas:
+                    q = connection.creation.sql_create_schema(schema, self.style)
                     if q:
                         sql.append(q)
-                    seen_schemas.add(model._meta.db_schema)
+                    seen_schemas.add(schema)
                 table_sql, references = connection.creation.sql_create_model(model, self.style, seen_models)
                 sql.extend(table_sql)
                 seen_models.add(model)

@@ -8,7 +8,6 @@ from django.db.models import get_models
 
 def sql_create(app, style, connection):
     "Returns a list of the CREATE TABLE SQL statements for the given app."
-
     if connection.settings_dict['ENGINE'] == 'django.db.backends.dummy':
         # This must be the "dummy" database backend, which means the user
         # hasn't set ENGINE for the database.
@@ -23,7 +22,7 @@ def sql_create(app, style, connection):
     # we can be conservative).
     app_models = models.get_models(app, include_auto_created=True)
     final_output = []
-    tables = connection.introspection.table_names()
+    tables = connection.introspection.all_qualified_names(converted=True)
     known_models = set([model for model in connection.introspection.installed_models(tables) if model not in app_models])
     pending_references = {}
 
@@ -63,14 +62,7 @@ def sql_delete(app, style, connection):
 
     # Figure out which tables already exist
     if cursor:
-        table_names = connection.introspection.get_visible_tables_list(cursor)
-        # Need to convert the always visible names to have no db-schema. The same
-        # tables will also be in the qualified tables list, so the always visible
-        # tables will be in both schema, table and None, table formats. This is
-        # needed as we need to be prepared for both schema-qualified models and
-        # models with schema = None.
-        table_names = [(None, t) for t in table_names]
-        table_names.extend(connection.introspection.get_qualified_tables_list(cursor))
+        table_names = connection.introspection.all_qualified_names(converted=True)
     else:
         table_names = []
 
@@ -113,7 +105,7 @@ def sql_flush(style, connection, only_django=False):
     if only_django:
         tables = connection.introspection.django_table_names(only_existing=True)
     else:
-        tables = connection.introspection.table_names().extend(connection.introspection.qualified_names())
+        tables = connection.introspection.all_qualified_names()
     statements = connection.ops.sql_flush(
         style, tables, connection.introspection.sequence_list()
     )
