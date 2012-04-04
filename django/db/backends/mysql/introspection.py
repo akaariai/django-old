@@ -128,6 +128,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             {'primary_key': boolean representing whether it's the primary key,
              'unique': boolean representing whether it's a unique index}
         """
+        print qualified_name, self.connection.ops.qualified_name(qualified_name)
         cursor.execute("SHOW INDEX FROM %s" % self.connection.ops.qualified_name(qualified_name))
         indexes = {}
         for row in cursor.fetchall():
@@ -143,7 +144,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # format as qualified_name gives. In plain case however we use
         # the given name as is. 
         if isinstance(name, tuple):
-            schema = self.connection.convert_schema(name.schema)
-            return (schema, name.table)
+            schema = self.connection.convert_schema(name[0])
+            return (schema, name[1])
         else:
             return name

@@ -364,10 +364,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     
     def convert_schema(self, schema):
         schema = schema or self.schema or self.settings_dict['NAME']
-        if (self.connection.test_schema_prefix
-                and schema not in self.connection.settings_dict['TEST_SCHEMAS']):
-            return truncate_name('%s_%s' % (self.connection.test_schema_prefix, schema),
-                                 self.connection.ops.max_name_length())
+        if (self.test_schema_prefix
+                and schema not in self.settings_dict['TEST_SCHEMAS']):
+            return truncate_name('%s%s' % (self.test_schema_prefix, schema),
+                                 self.ops.max_name_length())
         return schema
 
     def _valid_connection(self):

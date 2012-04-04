@@ -272,7 +272,7 @@ class DjangoTestSuiteRunner(object):
         for alias in connections:
             connection = connections[alias]
             if not connection.settings_dict['TEST_SCHEMA_PREFIX'] is None:
-                connection.settings_dict['TEST_SCHEMA_PREFIX'] = alias
+                connection.settings_dict['TEST_SCHEMA_PREFIX'] = '%s_' % alias
             if connection.settings_dict['TEST_MIRROR']:
                 # If the database is marked as a test mirror, save
                 # the alias.
