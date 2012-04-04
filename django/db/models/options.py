@@ -27,7 +27,7 @@ class Options(object):
         self.verbose_name_plural = None
         self.db_table = ''
         self.db_schema = ''
-        self.qname = ('', '')
+        self.qualified_name = ('', '')
         self.ordering = []
         self.unique_together =  []
         self.permissions =  []

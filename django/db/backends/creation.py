@@ -155,7 +155,7 @@ class BaseDatabaseCreation(object):
                 r_qname = rel_opts.qualified_name
                 r_col = f.column
                 table = opts.db_table
-                qname = opts.qualified_name
+                qname = self.qualified_name_for_ref(r_qname, opts.qualified_name)
                 col = opts.get_field(f.rel.field_name).column
                 # For MySQL, r_name must be unique in the first 64 characters.
                 # So we are careful with character usage here.
@@ -165,7 +165,7 @@ class BaseDatabaseCreation(object):
                     ' %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s)%s;' %
                     (qn3(r_qname), qn(truncate_name(
                         r_name, self.connection.ops.max_name_length())),
-                    qn(r_col), qn3(qname, qualify_hint=r_qname[0] is not None), qn(col),
+                    qn(r_col), qname, qn(col),
                     self.connection.ops.deferrable_sql()))
             del pending_references[model]
         return final_output

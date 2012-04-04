@@ -128,7 +128,6 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             {'primary_key': boolean representing whether it's the primary key,
              'unique': boolean representing whether it's a unique index}
         """
-        print qualified_name, self.connection.ops.qualified_name(qualified_name)
         cursor.execute("SHOW INDEX FROM %s" % self.connection.ops.qualified_name(qualified_name))
         indexes = {}
         for row in cursor.fetchall():

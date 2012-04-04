@@ -54,6 +54,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         """
         Returns schema qualified names of all tables in the current database.
         """
+        if not schemas:
+            return []
         cursor.execute("""
             SELECT n.nspname, c.relname
             FROM pg_catalog.pg_class c

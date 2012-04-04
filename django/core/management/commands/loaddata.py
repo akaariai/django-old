@@ -218,7 +218,7 @@ class Command(BaseCommand):
 
             # Since we disabled constraint checks, we must manually check for
             # any invalid keys that might have been added
-            qualified_names = [model._meta.qname for model in models]
+            qualified_names = [model._meta.qualified_name for model in models]
             connection.check_constraints(table_names=qualified_names)
 
         except (SystemExit, KeyboardInterrupt):

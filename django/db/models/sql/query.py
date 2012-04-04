@@ -659,10 +659,13 @@ class Query(object):
             self.alias_refcount[alias] += 1
             return alias, False
 
-        # Create a new alias for this table.
-        if current:
+        # Create a new alias for this table if this table is already used
+        # in the query, or if there is the same table name used in the query
+        # under different schema qualified name.
+        if current or table_name[1] in [t[1] for t in self.tables]:
             alias = '%s%d' % (self.alias_prefix, len(self.alias_map) + 1)
-            current.append(alias)
+            if current:
+                current.append(alias)
         else:
             # The first occurence of a table uses the table name directly.
             alias = table_name

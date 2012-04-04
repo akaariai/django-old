@@ -50,7 +50,7 @@ class ManyToManyUnmanagedTests(TestCase):
         """
         conv = connection.introspection.table_name_converter
         table = conv(Unmanaged2.mm.through._meta.qualified_name)
-        tables = self.connection.introspection.all_qualified_names(converted=True)
+        tables = connection.introspection.all_qualified_names(converted=True)
         self.assertTrue(table not in tables, "Table '%s' should not exist, but it does." % table[1])
 
     def test_many_to_many_between_unmanaged_and_managed(self):
@@ -59,5 +59,5 @@ class ManyToManyUnmanagedTests(TestCase):
         """
         conv = connection.introspection.table_name_converter
         table = conv(Managed1.mm.through._meta.qualified_name)
-        tables = self.connection.introspection.all_qualified_names(converted=True)
+        tables = connection.introspection.all_qualified_names(converted=True)
         self.assertTrue(table in tables, "Table '%s' does not exist." % table[1])

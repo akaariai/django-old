@@ -140,7 +140,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return '"%s"' % name
 
-    def qualified_name(self, name, qualify_hint=False):
+    def qualified_name(self, name):
         # Fake schema support by using the schema as a prefix to the
         # table name.
         schema = name[0] or self.connection.schema

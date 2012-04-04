@@ -247,10 +247,14 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return "`%s`" % name
 
-    def qualified_name(self, qname, qualify_hint=False):
+    def qualified_name(self, qname):
+        """
+        MySQL is funny in a way that if a query has schema.tbl and just plain
+        tbl, then mysql aliases both to tbl. qualify_hint tells us that the
+        query has some qualified_names in it and so we must qualify all
+        tables.
+        """
         schema = qname[0] or self.connection.schema
-        if not schema and qualify_hint:
-            schema = self.connection.settings_dict['NAME']
         if schema:
             schema = self.connection.convert_schema(schema)
             return "%s.%s" % (self.quote_name(schema),

@@ -18,7 +18,6 @@ class SQLCompiler(object):
         self.connection = connection
         self.using = using
         self.quote_cache = {}
-        self.has_qualified_names = None
 
     def pre_sql_setup(self):
         """
@@ -47,18 +46,8 @@ class SQLCompiler(object):
         if name in self.query.alias_map and not isinstance(name, tuple):
             self.quote_cache[name] = name
             return name
-        # If you have table "sn" in default schema and another table
-        # "someschema"."sn" some databases (our old friend MySQL) can't see
-        # that "sn" is a different table alias than "someschema"."sn". For that
-        # reason, on MySQL, we need to always schema-qualify names when there
-        # is any schema-qualified table in the query.
-        if self.has_qualified_names is None:
-            self.has_qualified_names = self.connection.schema != None
-            for alias in self.query.alias_map:
-                if isinstance(alias, tuple) and alias[0] is not None:
-                    self.has_qualified_names = True
         if isinstance(name, tuple):
-            r = self.connection.ops.qualified_name(name, qualify_hint=self.has_qualified_names)
+            r = self.connection.ops.qualified_name(name)
         else:
             r = self.connection.ops.quote_name(name)
         self.quote_cache[name] = r
@@ -541,14 +530,15 @@ class SQLCompiler(object):
         for t in self.query.extra_tables:
             # Plain string table names are assumed to be in default schema
             if not isinstance(t, tuple):
-                t = settings.DEFAULT_SCHEMA, t
-            alias, _ = self.query.table_alias(t)
-            # Only add the alias if it's not already present (the table_alias()
-            # calls increments the refcount, so an alias refcount of one means
-            # this is the only reference.
-            if alias not in self.query.alias_map or self.query.alias_refcount[alias] == 1:
+                t = self.connection.schema, t
+            # Only add the table if it is not already in the query.
+            if t not in self.query.table_map or self.query.alias_refcount[t] == 0:
+                # This will add the table into the query properly, however we
+                # are not interested in the alias it gets, we add it as a
+                # plain table.
+                self.query.table_alias(t)
                 connector = not first and ', ' or ''
-                result.append('%s%s' % (connector, qn(alias)))
+                result.append('%s%s' % (connector, qn(t)))
                 first = False
         return result, []
 

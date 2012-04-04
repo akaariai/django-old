@@ -71,7 +71,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return '"%s"' % name
 
-    def qualified_name(self, qualified_name, qualify_hint=False):
+    def qualified_name(self, qualified_name):
         """
         Return the table's name in fully qualified format
         (schema_name.tbl_name) if there is a schema_name, else returns just
