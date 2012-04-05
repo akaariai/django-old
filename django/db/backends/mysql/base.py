@@ -189,6 +189,10 @@ class DatabaseFeatures(BaseDatabaseFeatures):
         "Confirm support for introspected foreign keys"
         return self._mysql_storage_engine() != 'MyISAM'
 
+    def confirm(self):
+        super(DatabaseFeatures, self).confirm()
+        self.supports_foreign_keys != self.can_introspect_foreign_keys
+
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "django.db.backends.mysql.compiler"
 

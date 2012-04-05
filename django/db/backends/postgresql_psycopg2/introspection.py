@@ -26,7 +26,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         cursor.execute("""
             SELECT n.nspname
             FROM pg_catalog.pg_namespace n
-            WHERE n.nspname != 'information_schema' AND n.nspname not like 'pg_%s'""")
+            WHERE n.nspname != 'information_schema' AND n.nspname not like 'pg_%%'""")
         return [row[0] for row in cursor.fetchall()]
         
     def get_visible_tables_list(self, cursor):

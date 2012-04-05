@@ -48,6 +48,7 @@ except ImportError, e:
 from django.conf import settings
 from django.db import utils
 from django.db.backends import *
+from django.db.backends.util import truncate_name
 from django.db.backends.signals import connection_created
 from django.db.backends.oracle.client import DatabaseClient
 from django.db.backends.oracle.creation import DatabaseCreation
@@ -87,13 +88,15 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "django.db.backends.oracle.compiler"
 
-    def autoinc_sql(self, table, column):
+    def autoinc_sql(self, qualified_name, column):
         # To simulate auto-incrementing primary keys in Oracle, we have to
         # create a sequence and a trigger.
-        sq_name = self._get_sequence_name(table)
-        tr_name = self._get_trigger_name(table)
-        tbl_name = self.quote_name(table)
-        col_name = self.quote_name(column)
+        params = {
+            'sq_name': self._get_sequence_name(qualified_name),
+            'tr_name': self._get_trigger_name(qualified_name),
+            'tbl_name': self.qualified_name(qualified_name),
+            'col_name' : self.quote_name(column),
+        }
         sequence_sql = """
 DECLARE
     i INTEGER;
@@ -101,20 +104,20 @@ BEGIN
     SELECT COUNT(*) INTO i FROM USER_CATALOG
         WHERE TABLE_NAME = '%(sq_name)s' AND TABLE_TYPE = 'SEQUENCE';
     IF i = 0 THEN
-        EXECUTE IMMEDIATE 'CREATE SEQUENCE "%(sq_name)s"';
+        EXECUTE IMMEDIATE 'CREATE SEQUENCE %(sq_name)s';
     END IF;
 END;
-/""" % locals()
+/""" % params
         trigger_sql = """
-CREATE OR REPLACE TRIGGER "%(tr_name)s"
+CREATE OR REPLACE TRIGGER %(tr_name)s
 BEFORE INSERT ON %(tbl_name)s
 FOR EACH ROW
 WHEN (new.%(col_name)s IS NULL)
     BEGIN
-        SELECT "%(sq_name)s".nextval
+        SELECT %(sq_name)s.nextval
         INTO :new.%(col_name)s FROM dual;
     END;
-/""" % locals()
+/""" % params
         return sequence_sql, trigger_sql
 
     def date_extract_sql(self, lookup_type, field_name):
@@ -196,8 +199,8 @@ WHEN (new.%(col_name)s IS NULL)
     def deferrable_sql(self):
         return " DEFERRABLE INITIALLY DEFERRED"
 
-    def drop_sequence_sql(self, table):
-        return "DROP SEQUENCE %s;" % self.quote_name(self._get_sequence_name(table))
+    def drop_sequence_sql(self, qualified_name):
+        return "DROP SEQUENCE %s;" % self._get_sequence_name(qualified_name)
 
     def fetch_returned_insert_id(self, cursor):
         return long(cursor._insert_id_var.getvalue())
@@ -213,9 +216,9 @@ WHEN (new.%(col_name)s IS NULL)
         # The DB API definition does not define this attribute.
         return cursor.statement
 
-    def last_insert_id(self, cursor, table_name, pk_name):
-        sq_name = self._get_sequence_name(table_name)
-        cursor.execute('SELECT "%s".currval FROM dual' % sq_name)
+    def last_insert_id(self, cursor, qualified_name, pk_name):
+        sq_name = self._get_sequence_name(qualified_name)
+        cursor.execute('SELECT %s.currval FROM dual' % sq_name)
         return cursor.fetchone()[0]
 
     def lookup_cast(self, lookup_type):
@@ -247,8 +250,18 @@ WHEN (new.%(col_name)s IS NULL)
                                                self.max_name_length())
         return name.upper()
 
+    def qualified_name(self, qname):
+        schema = qname[0] or self.connection.schema
+        if schema:
+            schema = self.connection.convert_schema(schema)
+            return "%s.%s" % (self.quote_name(schema),
+                              self.quote_name(qname[1]))
+        else:
+            return self.quote_name(qname[1])
+
     def random_function_sql(self):
         return "DBMS_RANDOM.RANDOM"
+
 
     def regex_lookup_9(self, lookup_type):
         raise NotImplementedError("Regexes are not supported in Oracle before version 10g.")
@@ -284,15 +297,18 @@ WHEN (new.%(col_name)s IS NULL)
             sql = ['%s %s %s;' % \
                     (style.SQL_KEYWORD('DELETE'),
                      style.SQL_KEYWORD('FROM'),
-                     style.SQL_FIELD(self.quote_name(table)))
+                     style.SQL_FIELD(self.qualified_name(table)))
                     for table in tables]
             # Since we've just deleted all the rows, running our sequence
             # ALTER code will reset the sequence to 0.
             for sequence_info in sequences:
-                sequence_name = self._get_sequence_name(sequence_info['table'])
-                table_name = self.quote_name(sequence_info['table'])
+                qname = sequence_info['schema'], sequence_info['table']
+                schema = qname[0].upper()
+                sequence_name = self._get_sequence_name(qname[1])
+                table_name = self.qualified_name(qname)
                 column_name = self.quote_name(sequence_info['column'] or 'id')
                 query = _get_sequence_reset_sql() % {'sequence': sequence_name,
+                                                     'schema': schema,
                                                      'table': table_name,
                                                      'column': column_name}
                 sql.append(query)
@@ -307,10 +323,12 @@ WHEN (new.%(col_name)s IS NULL)
         for model in model_list:
             for f in model._meta.local_fields:
                 if isinstance(f, models.AutoField):
-                    table_name = self.quote_name(model._meta.db_table)
+                    table_name = self.qualified_name(model._meta.qualified_name)
+                    schema = self.connection.convert_schema(model._meta.db_schema).upper()
                     sequence_name = self._get_sequence_name(model._meta.db_table)
                     column_name = self.quote_name(f.column)
                     output.append(query % {'sequence': sequence_name,
+                                           'schema': schema,
                                            'table': table_name,
                                            'column': column_name})
                     # Only one AutoField is allowed per model, so don't
@@ -318,11 +336,14 @@ WHEN (new.%(col_name)s IS NULL)
                     break
             for f in model._meta.many_to_many:
                 if not f.rel.through:
-                    table_name = self.quote_name(f.m2m_db_table())
-                    sequence_name = self._get_sequence_name(f.m2m_db_table())
+                    table_name = self.qualified_name(f.m2m_qualified_name())
+                    schema = self.connection.convert_schema(f.m2m_qualified_name()[0]).upper()
+                    seq_table = f.m2m_qualified_name()[1]
+                    sequence_name = self._get_sequence_name(seq_table)
                     column_name = self.quote_name('id')
                     output.append(query % {'sequence': sequence_name,
                                            'table': table_name,
+                                           'schema': schema,
                                            'column': column_name})
         return output
 
@@ -377,13 +398,17 @@ WHEN (new.%(col_name)s IS NULL)
             raise NotImplementedError("Bit-wise or is not supported in Oracle.")
         return super(DatabaseOperations, self).combine_expression(connector, sub_expressions)
 
-    def _get_sequence_name(self, table):
+    def _get_sequence_name(self, name):
         name_length = self.max_name_length() - 3
-        return '%s_SQ' % util.truncate_name(table, name_length).upper()
+        if isinstance(name, tuple):
+            seq_name = '%s_SQ' % util.truncate_name(name[1], name_length).upper()
+            return self.qualified_name((name[0], seq_name))
+        return '%s_SQ' % util.truncate_name(name, name_length).upper()
 
-    def _get_trigger_name(self, table):
+    def _get_trigger_name(self, qualified_name):
         name_length = self.max_name_length() - 3
-        return '%s_TR' % util.truncate_name(table, name_length).upper()
+        trig_name = '%s_TR' % util.truncate_name(qualified_name[1], name_length).upper()
+        return self.qualified_name((qualified_name[0], trig_name))
 
     def bulk_insert_sql(self, fields, num_values):
         items_sql = "SELECT %s FROM DUAL" % ", ".join(["%s"] * len(fields))
@@ -444,6 +469,14 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.creation = DatabaseCreation(self)
         self.introspection = DatabaseIntrospection(self)
         self.validation = BaseDatabaseValidation(self)
+    
+    def convert_schema(self, schema, upper=False):
+        schema = schema or self.schema or self.settings_dict['USER']
+        if (self.test_schema_prefix
+                and schema not in self.settings_dict['TEST_SCHEMAS']):
+            return truncate_name('%s%s' % (self.test_schema_prefix, schema),
+                                 self.ops.max_name_length())
+        return schema
 
     def check_constraints(self, table_names=None):
         """
@@ -674,8 +707,10 @@ class FormatStylePlaceholderCursor(object):
         try:
             return self.cursor.execute(query, self._param_generator(params))
         except Database.IntegrityError, e:
+            print query
             raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]
         except Database.DatabaseError, e:
+            print query
             # cx_Oracle <= 4.4.0 wrongly raises a DatabaseError for ORA-01400.
             if hasattr(e.args[0], 'code') and e.args[0].code == 1400 and not isinstance(e, IntegrityError):
                 raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]
@@ -822,10 +857,10 @@ DECLARE
     seq_value integer;
 BEGIN
     SELECT NVL(MAX(%(column)s), 0) INTO table_value FROM %(table)s;
-    SELECT NVL(last_number - cache_size, 0) INTO seq_value FROM user_sequences
-           WHERE sequence_name = '%(sequence)s';
+    SELECT NVL(last_number - cache_size, 0) INTO seq_value FROM all_sequences
+           WHERE sequence_name = '%(sequence)s' AND sequence_owner = '%(schema)s';
     WHILE table_value > seq_value LOOP
-        SELECT "%(sequence)s".nextval INTO seq_value FROM dual;
+        SELECT "%(schema)s"."%(sequence)s".nextval INTO seq_value FROM dual;
     END LOOP;
 END;
 /"""

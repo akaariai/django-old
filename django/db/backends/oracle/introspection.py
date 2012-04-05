@@ -37,56 +37,77 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             return super(DatabaseIntrospection, self).get_field_type(
                 data_type, description)
 
-    def get_table_list(self, cursor):
+    def get_visible_tables_list(self, cursor):
         "Returns a list of table names in the current database."
         cursor.execute("SELECT TABLE_NAME FROM USER_TABLES")
-        return [row[0].lower() for row in cursor.fetchall()]
+        return [(None, row[0].lower()) for row in cursor.fetchall()]
 
-    def get_table_description(self, cursor, table_name):
+    def get_qualified_tables_list(self, cursor, schemas):
+        "Returns a list of table names in the given schemas list."
+        if not schemas:
+            return []
+        args = ', '.join(['%s']*len(schemas))
+        schemas = [s.upper() for s in schemas]
+        cursor.execute("""
+            SELECT OWNER, TABLE_NAME
+              FROM ALL_TABLES WHERE OWNER in (%s)""" % args,
+                       schemas)
+        return [(row[0].lower(), row[1].lower()) for row in cursor.fetchall()]
+
+    def get_table_description(self, cursor, qualified_name):
         "Returns a description of the table, with the DB-API cursor.description interface."
-        cursor.execute("SELECT * FROM %s WHERE ROWNUM < 2" % self.connection.ops.quote_name(table_name))
+        cursor.execute("SELECT * FROM %s WHERE ROWNUM < 2"
+                       % self.connection.ops.qualified_name(qualified_name))
         description = []
         for desc in cursor.description:
             description.append((desc[0].lower(),) + desc[1:])
         return description
 
-    def table_name_converter(self, name):
+    def table_name_converter(self, name, plain=False):
         "Table name comparison is case insensitive under Oracle"
-        return name.lower()
+        if isinstance(name, tuple):
+            schema = self.connection.convert_schema(name[0])
+            return (schema and schema.lower() or None, name[1].lower())
+        else:
+            return name.lower()
 
-    def _name_to_index(self, cursor, table_name):
+    def _name_to_index(self, cursor, qualified_name):
         """
         Returns a dictionary of {field_name: field_index} for the given table.
         Indexes are 0-based.
         """
-        return dict([(d[0], i) for i, d in enumerate(self.get_table_description(cursor, table_name))])
+        return dict([(d[0], i) for i, d in enumerate(self.get_table_description(cursor, qualified_name))])
 
-    def get_relations(self, cursor, table_name):
+    def get_relations(self, cursor, qualified_name):
         """
         Returns a dictionary of {field_index: (field_index_other_table, other_table)}
         representing all relationships to the given table. Indexes are 0-based.
         """
-        table_name = table_name.upper()
+        schema = self.connection.convert_schema(qualified_name[0]).upper()
+        table = qualified_name[1].upper()
         cursor.execute("""
-    SELECT ta.column_id - 1, tb.table_name, tb.column_id - 1
-    FROM   user_constraints, USER_CONS_COLUMNS ca, USER_CONS_COLUMNS cb,
-           user_tab_cols ta, user_tab_cols tb
-    WHERE  user_constraints.table_name = %s AND
+    SELECT ta.column_id - 1, tb.table_name, tb.owner, tb.column_id - 1
+    FROM   all_constraints, ALL_CONS_COLUMNS ca, ALL_CONS_COLUMNS cb,
+           all_tab_cols ta, all_tab_cols tb
+    WHERE  all_constraints.table_name = %s AND
+           all_constraints.owner = %s AND
            ta.table_name = %s AND
+           ta.owner = %s AND
            ta.column_name = ca.column_name AND
            ca.table_name = %s AND
-           user_constraints.constraint_name = ca.constraint_name AND
-           user_constraints.r_constraint_name = cb.constraint_name AND
+           ca.owner = %s AND
+           all_constraints.constraint_name = ca.constraint_name AND
+           all_constraints.r_constraint_name = cb.constraint_name AND
            cb.table_name = tb.table_name AND
            cb.column_name = tb.column_name AND
-           ca.position = cb.position""", [table_name, table_name, table_name])
+           ca.position = cb.position""", [table, schema, table, schema, table, schema])
 
         relations = {}
         for row in cursor.fetchall():
-            relations[row[0]] = (row[2], row[1].lower())
+            relations[row[0]] = (row[3], (row[2].lower(), row[1].lower()))
         return relations
 
-    def get_indexes(self, cursor, table_name):
+    def get_indexes(self, cursor, qualified_name):
         """
         Returns a dictionary of fieldname -> infodict for the given table,
         where each infodict is in the format:
@@ -96,27 +117,36 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # This query retrieves each index on the given table, including the
         # first associated field name
         # "We were in the nick of time; you were in great peril!"
+        schema = self.connection.convert_schema(qualified_name[0]).upper()
+        table = qualified_name[1].upper()
         sql = """\
 SELECT LOWER(all_tab_cols.column_name) AS column_name,
-       CASE user_constraints.constraint_type
+       CASE all_constraints.constraint_type
            WHEN 'P' THEN 1 ELSE 0
        END AS is_primary_key,
-       CASE user_indexes.uniqueness
+       CASE all_indexes.uniqueness
            WHEN 'UNIQUE' THEN 1 ELSE 0
        END AS is_unique
-FROM   all_tab_cols, user_cons_columns, user_constraints, user_ind_columns, user_indexes
-WHERE  all_tab_cols.column_name = user_cons_columns.column_name (+)
-  AND  all_tab_cols.table_name = user_cons_columns.table_name (+)
-  AND  user_cons_columns.constraint_name = user_constraints.constraint_name (+)
-  AND  user_constraints.constraint_type (+) = 'P'
-  AND  user_ind_columns.column_name (+) = all_tab_cols.column_name
-  AND  user_ind_columns.table_name (+) = all_tab_cols.table_name
-  AND  user_indexes.uniqueness (+) = 'UNIQUE'
-  AND  user_indexes.index_name (+) = user_ind_columns.index_name
+FROM   all_tab_cols, all_cons_columns, all_constraints, all_ind_columns, all_indexes
+WHERE  all_tab_cols.column_name = all_cons_columns.column_name (+)
+  AND  all_tab_cols.table_name = all_cons_columns.table_name (+)
+  AND  all_tab_cols.owner = all_cons_columns.owner (+)
+  AND  all_cons_columns.constraint_name = all_constraints.constraint_name (+)
+  AND  all_constraints.constraint_type (+) = 'P'
+  AND  all_ind_columns.column_name (+) = all_tab_cols.column_name
+  AND  all_ind_columns.table_name (+) = all_tab_cols.table_name
+  AND  all_ind_columns.index_owner (+) = all_tab_cols.owner
+  AND  all_indexes.uniqueness (+) = 'UNIQUE'
+  AND  all_indexes.index_name (+) = all_ind_columns.index_name
   AND  all_tab_cols.table_name = UPPER(%s)
+  AND  all_tab_cols.owner = UPPER(%s)
 """
-        cursor.execute(sql, [table_name])
+        cursor.execute(sql, [table, schema])
         indexes = {}
         for row in cursor.fetchall():
             indexes[row[0]] = {'primary_key': row[1], 'unique': row[2]}
         return indexes
+
+    def get_schema_list(self, cursor):
+        cursor.execute("SELECT USERNAME FROM ALL_USERS")
+        return [r[0] for r in cursor.fetchall()]

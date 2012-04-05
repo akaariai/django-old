@@ -327,7 +327,7 @@ class BaseDatabaseWrapper(object):
         Given a model class or instance, returns its current database table
         name in schema qualified format.
         """
-        return self.ops.qualified_name(model._meta.qualified_name)
+        return self.ops.qualified_name(model._meta.qualified_name, True)
 
 class BaseDatabaseFeatures(object):
     allows_group_by_pk = False
@@ -422,6 +422,7 @@ class BaseDatabaseFeatures(object):
     _confirmed = False
     supports_transactions = None
     supports_stddev = None
+    supports_foreign_keys = True
     can_introspect_foreign_keys = None
 
     # Support for the DISTINCT ON clause
@@ -430,7 +431,7 @@ class BaseDatabaseFeatures(object):
     # If the database has databases and schemas as different concepts
     # or plain fakes schemas, it is safe to skip conflicts checking in
     # testing on that database.
-    safe_reuse_schemas = False
+    namespaced_schemas = False
 
     def __init__(self, connection):
         self.connection = connection
@@ -696,16 +697,17 @@ class BaseDatabaseOperations(object):
         """
         raise NotImplementedError()
 
-    def qualified_name(self, qualified_name, qualify_hint=False):
+    def qualified_name(self, qualified_name, from_model=False):
         """
         Formats the given schema, table_name tuple into database's
         qualified and quoted name format. The schema can be None.
 
-        Certain databases need to qualify all names if there is a single
-        qualified name in the query to avoid alias collisions for example.
-        If qualify_hint is given, this tells the problematic backends to
-        always append the default schema to the returned qualified name
-        even if there is no schema in the given qualfied_name parameter.
+        We need to know if the name if from an existing database
+        table, or from a model. The reason is that some backends
+        do modifications to the name (schema-prefix the table name)
+        at runtime, and we must not do that repeatedly. Hence, if
+        the name comes from the DB and is already schema-prefixed,
+        then we must not schema-prefix it again.
         """
         raise NotImplementedError
 
@@ -754,7 +756,7 @@ class BaseDatabaseOperations(object):
         """
         return ''
 
-    def sql_flush(self, style, tables, sequences):
+    def sql_flush(self, style, tables, sequences, from_db):
         """
         Returns a list of SQL statements required to remove all data from
         the given database tables (without actually removing the tables
@@ -762,6 +764,9 @@ class BaseDatabaseOperations(object):
 
         The `style` argument is a Style object as returned by either
         color_style() or no_style() in django.core.management.color.
+
+        The from_db argument tells if the names are coming from database
+        or from model._meta, needed for schema support.
         """
         raise NotImplementedError()
 
@@ -961,7 +966,7 @@ class BaseDatabaseIntrospection(object):
         if converted:
             converter = self.table_name_converter
         else:
-            converter = lambda x: x
+            converter = lambda x, plain: x
         return set([converter((None, t), plain=True) for _, t in nonqualified_tables] +
                    [converter(t, plain=True) for t in qualified_tables])
     
@@ -1012,14 +1017,17 @@ class BaseDatabaseIntrospection(object):
         return found_tables
 
     def installed_models(self, tables):
-        "Returns a set of all models represented by the provided list of table names."
+        """
+        Returns a set of all models represented by the provided list of table names.
+
+        The given tables are assumed to be pre-converted.
+        """
         from django.db import models, router
         all_models = []
         for app in models.get_apps():
             for model in models.get_models(app):
                 if router.allow_syncdb(self.connection.alias, model):
                     all_models.append(model)
-        tables = map(self.table_name_converter, tables)
         return set([
             m for m in all_models
             if self.table_name_converter(m._meta.qualified_name) in tables

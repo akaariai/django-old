@@ -33,6 +33,8 @@ class DatabaseCreation(BaseDatabaseCreation):
 
     def sql_for_pending_references(self, model, style, pending_references):
         "SQLite3 doesn't support constraints"
+        if model in pending_references:
+            del pending_references[model]
         return []
 
     def sql_remove_table_constraints(self, model, references_to_delete, style):

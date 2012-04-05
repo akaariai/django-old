@@ -47,7 +47,7 @@ class SQLCompiler(object):
             self.quote_cache[name] = name
             return name
         if isinstance(name, tuple):
-            r = self.connection.ops.qualified_name(name)
+            r = self.connection.ops.qualified_name(name, True)
         else:
             r = self.connection.ops.quote_name(name)
         self.quote_cache[name] = r
@@ -864,7 +864,7 @@ class SQLInsertCompiler(SQLCompiler):
         qn = self.connection.ops.quote_name
         qn3 = self.connection.ops.qualified_name
         opts = self.query.model._meta
-        result = ['INSERT INTO %s' % qn3(opts.qualified_name)]
+        result = ['INSERT INTO %s' % qn3(opts.qualified_name, True)]
 
         has_fields = bool(self.query.fields)
         fields = self.query.fields if has_fields else [opts.pk]
@@ -946,7 +946,8 @@ class SQLUpdateCompiler(SQLCompiler):
         self.pre_sql_setup()
         if not self.query.values:
             return '', ()
-        table = self.connection.ops.qualified_name(self.query.model._meta.qualified_name)
+        opts = self.query.model._meta
+        table = self.connection.ops.qualified_name(opts.qualified_name, True)
         qn = self.quote_name_unless_alias
         alias = qn(self.query.tables[0])
         if table == alias:

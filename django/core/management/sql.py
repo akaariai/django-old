@@ -27,6 +27,11 @@ def sql_create(app, style, connection):
     pending_references = {}
 
     for model in app_models:
+        schema = connection.convert_schema(model._meta.db_schema)
+        if schema:
+            output = connection.creation.sql_create_schema(schema, style)
+            if output:
+                final_output.append(output)
         output, references = connection.creation.sql_create_model(model, style, known_models)
         final_output.extend(output)
         for refto, refs in references.items():
@@ -104,10 +109,12 @@ def sql_flush(style, connection, only_django=False):
     """
     if only_django:
         tables = connection.introspection.django_table_names(only_existing=True)
+        from_db = False
     else:
         tables = connection.introspection.all_qualified_names()
+        from_db = True
     statements = connection.ops.sql_flush(
-        style, tables, connection.introspection.sequence_list()
+        style, tables, connection.introspection.sequence_list(), from_db
     )
     return statements
 

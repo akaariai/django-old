@@ -1,8 +1,14 @@
 from __future__ import absolute_import
 
-from .models import SameName1, SameName2, M2MTable
+from .models import (SameName1, SameName2, M2MTable, PrefixCollision,
+                     PrefixCollision2)
 
-from django.test import TestCase
+from django.core.management.sql import sql_flush, sql_all
+from django.core.management.color import no_style
+from django.db import transaction, IntegrityError, connection
+from django.db.models.loading import get_app
+from django.test import (TestCase, TransactionTestCase,
+    skipUnlessDBFeature)
 
 class SchemaTests(TestCase):
     def test_create(self):
@@ -39,3 +45,48 @@ class SchemaTests(TestCase):
         M2MTable.objects.create()
         m1 = M2MTable.objects.filter(m2m__in=[sn1, sn2])[0]
         self.assertEquals(list(m1.m2m.order_by('pk')), [sn1, sn2])
+
+    def test_sql_flush(self):
+        """
+        Test that sql_flush contains some key pieces of SQL.
+        """
+        found = False
+        qname = connection.qname(SameName2)
+        for sql in sql_flush(no_style(), connection):
+            if qname in sql:
+                found = True
+                break
+        self.assertTrue(found, "Table '%s' not found in sql_flush output." % qname)
+
+    def test_sql_all(self):
+        """
+        Test that sql_all contains the create schema statements.
+        """
+        schema = connection.convert_schema(SameName2._meta.db_schema)
+        create_schema_sql = connection.creation.sql_create_schema(schema, no_style())
+        found = create_schema_sql in sql_all(get_app('dbschema'), no_style(),
+                                             connection)
+        self.assertTrue(found or not create_schema_sql,
+                        'SQL for creating schemas not found from sql_all output')
+
+    def test_prefix_collisions(self):
+        try:
+            orig_schema = connection.settings_dict['SCHEMA']
+            connection.settings_dict['SCHEMA'] = 'foo'
+            self.assertNotEqual(connection.qname(PrefixCollision), connection.qname(PrefixCollision2))
+        finally:
+            connection.settings_dict['SCHEMA'] = orig_schema
+
+
+class TransactionalSchemaTests(TransactionTestCase):
+    @skipUnlessDBFeature('supports_transactions')
+    @skipUnlessDBFeature('supports_foreign_keys')
+    def test_foreign_keys(self):
+        """
+        Test that creating a model with non-matched cross-schema foreign
+        key results in foreign key violation.
+        """
+        @transaction.commit_on_success
+        def invalid_fk():
+            SameName2.objects.create(fk_id=-1)
+        self.assertRaises(IntegrityError, invalid_fk)

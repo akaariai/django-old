@@ -43,14 +43,13 @@ class DatabaseCreation(BaseDatabaseCreation):
     def __init__(self, connection):
         super(DatabaseCreation, self).__init__(connection)
 
-    def _create_test_db(self, verbosity=1, autoclobber=False):
+    def _get_ddl_parameters(self):
         TEST_NAME = self._test_database_name()
         TEST_USER = self._test_database_user()
         TEST_PASSWD = self._test_database_passwd()
         TEST_TBLSPACE = self._test_database_tblspace()
         TEST_TBLSPACE_TMP = self._test_database_tblspace_tmp()
-
-        parameters = {
+        return {
             'dbname': TEST_NAME,
             'user': TEST_USER,
             'password': TEST_PASSWD,
@@ -58,6 +57,8 @@ class DatabaseCreation(BaseDatabaseCreation):
             'tblspace_temp': TEST_TBLSPACE_TMP,
         }
 
+    def _create_test_db(self, verbosity=1, autoclobber=False, schemas=[]):
+        parameters = self._get_ddl_parameters()
         cursor = self.connection.cursor()
         if self._test_database_create():
             try:
@@ -65,7 +66,9 @@ class DatabaseCreation(BaseDatabaseCreation):
             except Exception, e:
                 sys.stderr.write("Got an error creating the test database: %s\n" % e)
                 if not autoclobber:
-                    confirm = raw_input("It appears the test database, %s, already exists. Type 'yes' to delete it, or 'no' to cancel: " % TEST_NAME)
+                    confirm = raw_input("It appears the test database, %(dbname)s, already "
+                                        "exists. Type 'yes' to delete it, or 'no' to cancel: "
+                                        % parameters)
                 if autoclobber or confirm == 'yes':
                     try:
                         if verbosity >= 1:
@@ -83,11 +86,13 @@ class DatabaseCreation(BaseDatabaseCreation):
             if verbosity >= 1:
                 print "Creating test user..."
             try:
-                self._create_test_user(cursor, parameters, verbosity)
+                self._create_test_user(cursor, parameters, verbosity, dba=bool(schemas))
             except Exception, e:
                 sys.stderr.write("Got an error creating the test user: %s\n" % e)
                 if not autoclobber:
-                    confirm = raw_input("It appears the test user, %s, already exists. Type 'yes' to delete it, or 'no' to cancel: " % TEST_USER)
+                    confirm = raw_input("It appears the test user, %(user)s, already exists. "
+                                        "Type 'yes' to delete it, or 'no' to cancel: "
+                                        % parameters)
                 if autoclobber or confirm == 'yes':
                     try:
                         if verbosity >= 1:
@@ -95,7 +100,7 @@ class DatabaseCreation(BaseDatabaseCreation):
                         self._destroy_test_user(cursor, parameters, verbosity)
                         if verbosity >= 1:
                             print "Creating test user..."
-                        self._create_test_user(cursor, parameters, verbosity)
+                        self._create_test_user(cursor, parameters, verbosity, dba=bool(schemas))
                     except Exception, e:
                         sys.stderr.write("Got an error recreating the test user: %s\n" % e)
                         sys.exit(2)
@@ -105,8 +110,8 @@ class DatabaseCreation(BaseDatabaseCreation):
 
         self.connection.settings_dict['SAVED_USER'] = self.connection.settings_dict['USER']
         self.connection.settings_dict['SAVED_PASSWORD'] = self.connection.settings_dict['PASSWORD']
-        self.connection.settings_dict['TEST_USER'] = self.connection.settings_dict['USER'] = TEST_USER
-        self.connection.settings_dict['PASSWORD'] = TEST_PASSWD
+        self.connection.settings_dict['TEST_USER'] = self.connection.settings_dict['USER'] = parameters['user']
+        self.connection.settings_dict['PASSWORD'] = parameters['password']
 
         return self.connection.settings_dict['NAME']
 
@@ -115,33 +120,21 @@ class DatabaseCreation(BaseDatabaseCreation):
         Destroy a test database, prompting the user for confirmation if the
         database already exists. Returns the name of the test database created.
         """
-        TEST_NAME = self._test_database_name()
-        TEST_USER = self._test_database_user()
-        TEST_PASSWD = self._test_database_passwd()
-        TEST_TBLSPACE = self._test_database_tblspace()
-        TEST_TBLSPACE_TMP = self._test_database_tblspace_tmp()
+        parameters = self._get_ddl_parameters()
 
         self.connection.settings_dict['USER'] = self.connection.settings_dict['SAVED_USER']
         self.connection.settings_dict['PASSWORD'] = self.connection.settings_dict['SAVED_PASSWORD']
 
-        parameters = {
-            'dbname': TEST_NAME,
-            'user': TEST_USER,
-            'password': TEST_PASSWD,
-            'tblspace': TEST_TBLSPACE,
-            'tblspace_temp': TEST_TBLSPACE_TMP,
-        }
-
         cursor = self.connection.cursor()
         time.sleep(1) # To avoid "database is being accessed by other users" errors.
-        if self._test_user_create():
-            if verbosity >= 1:
-                print 'Destroying test user...'
-            self._destroy_test_user(cursor, parameters, verbosity)
         if self._test_database_create():
             if verbosity >= 1:
                 print 'Destroying test database tables...'
             self._execute_test_db_destruction(cursor, parameters, verbosity)
+        if self._test_user_create():
+            if verbosity >= 1:
+                print 'Destroying test user...'
+            self._destroy_test_user(cursor, parameters, verbosity)
         self.connection.close()
 
     def _execute_test_db_creation(self, cursor, parameters, verbosity):
@@ -159,16 +152,19 @@ class DatabaseCreation(BaseDatabaseCreation):
         ]
         self._execute_statements(cursor, statements, parameters, verbosity)
 
-    def _create_test_user(self, cursor, parameters, verbosity):
+    def _create_test_user(self, cursor, parameters, verbosity, dba=False):
         if verbosity >= 2:
             print "_create_test_user(): username = %s" % parameters['user']
+        parameters = parameters.copy()
+        parameters['dba'] = ', DBA' if dba else ''
+
         statements = [
             """CREATE USER %(user)s
                IDENTIFIED BY %(password)s
                DEFAULT TABLESPACE %(tblspace)s
                TEMPORARY TABLESPACE %(tblspace_temp)s
             """,
-            """GRANT CONNECT, RESOURCE TO %(user)s""",
+            """GRANT CONNECT, RESOURCE %(dba)s TO %(user)s""",
         ]
         self._execute_statements(cursor, statements, parameters, verbosity)
 
@@ -186,9 +182,13 @@ class DatabaseCreation(BaseDatabaseCreation):
             print "_destroy_test_user(): user=%s" % parameters['user']
             print "Be patient.  This can take some time..."
         statements = [
-            'DROP USER %(user)s CASCADE',
+            self.sql_destroy_schema(parameters['user'], style=None)
         ]
         self._execute_statements(cursor, statements, parameters, verbosity)
+
+    def sql_destroy_schema(self, schema, style):
+        return "DROP USER %s CASCADE" % schema
+
 
     def _execute_statements(self, cursor, statements, parameters, verbosity):
         for template in statements:
@@ -272,3 +272,106 @@ class DatabaseCreation(BaseDatabaseCreation):
 
     def set_autocommit(self):
         self.connection.connection.autocommit = True
+
+    def _create_test_schemas(self, verbosity, schemas, autoclobber):
+        if not self._test_user_create():
+            return []
+        cursor = self.connection.cursor()
+        self.connection.settings_dict['TEST_SCHEMAS'].append(self.connection.settings_dict['USER'])
+        parameters = self._get_ddl_parameters()
+        parameters['authorization'] = parameters['user']
+        conv = self.connection.introspection.table_name_converter
+        existing_schemas = [conv(s) for s in self.connection.introspection.get_schema_list(cursor)]
+        conflicts = [conv(s) for s in existing_schemas if conv(s) in schemas]
+        if conflicts:
+            print 'The following users already exists: %s' % ', '.join(conflicts) 
+            if not autoclobber:
+                confirm = raw_input(
+                    "Type 'yes' if you would like to try deleting these users "
+                    "or 'no' to cancel: ")
+            if autoclobber or confirm == 'yes':
+                for schema in conflicts:
+                    parameters['user'] = schema
+                    if verbosity >= 1:
+                        print "Destroying user %s" % schema
+                    self._destroy_test_user(cursor, parameters, verbosity)
+                    existing_schemas.remove(schema)
+            else:
+                print "Tests cancelled."
+                sys.exit(1)
+           
+        to_create = [s for s in schemas if s not in existing_schemas]
+        for schema in to_create:
+            parameters['user'] = schema
+            if verbosity >= 1:
+                print "Creating user %s" % schema
+            self._create_test_user(cursor, parameters, verbosity)
+            self.connection.settings_dict['TEST_SCHEMAS'].append(schema)
+        return to_create
+
+    def sql_for_inline_foreign_key_references(self, field, known_models, style):
+        """
+        Return the SQL snippet defining the foreign key reference for a field.
+
+        Oracle doesn't let you do cross-schema foreign keys, except if you
+        are connected to the "from" schema. Don't ask why.
+        """
+        from_qname = field.model._meta.qualified_name
+        to_qname = field.rel.to._meta.qualified_name
+        from_schema = self.connection.convert_schema(from_qname[0])
+        to_schema = self.connection.convert_schema(to_qname[0])
+        if (from_schema and from_schema != self.connection.settings_dict['USER']
+                and from_schema != to_schema):
+            # We must create this later on using a separate connection.
+            return [], True
+        return super(DatabaseCreation, self).sql_for_inline_foreign_key_references(field, known_models, style)
+
+    def sql_for_pending_references(self, model, style, pending_references,
+                                   second_pass=False):
+        """
+        Sad fact of life: On oracle it is impossible to do cross-schema
+        references unless you explisitly grant REFERENCES on the referenced
+        table, and in addition the reference is made from the schema
+        containing the altered table (the one getting the new constraint).
+        To make things even nicer, we can't do the grant using the same user
+        we are giving the REFERENCES right, as you can't GRANT yourself.
+
+        The solution we are using is to do the pending cross-schema references
+        in two stages after all tables have been created:
+            1) Connect as the foreign key's target table owner, and grant
+               REFERENCES to all users needing to do foreign keys.
+            2) Connect as the source table's owner, and create the foreign
+               keys.
+        To support this arrangement, we will create only non-cross-schema
+        references unless we are explicitly told by the second_pass flag
+        that it is safe to do the cross schema references.
+        """
+        # Split the "safe" and "unsafe" references apart, and call
+        # the super() method for those whish are safe to do.
+        if second_pass:
+            return super(DatabaseCreation, self).sql_for_pending_references(
+                model, style, pending_references)
+        cross_schema_refs = []
+        single_schema_refs = []
+        conv = self.connection.convert_schema
+        if model in pending_references:
+            for rel_class, f in pending_references[model]:
+                to_schema = conv(rel_class._meta.qualified_name)
+                from_schema = conv(model._meta.qualified_name)
+                if to_schema != from_schema:
+                    cross_schema_refs.append((rel_class, f))
+                else:
+                    single_schema_refs.append((rel_class, f))
+        sql = []
+        if single_schema_refs:
+            pending_references[model] = single_schema_refs
+            sql = super(DatabaseCreation, self).sql_for_pending_references(
+                model, style, pending_references)
+        if cross_schema_refs:
+            pending_references[model] = cross_schema_refs
+        return sql
+
+    def post_create_pending_references(self, pending_references, as_sql=False):
+        print pending_references
+        if as_sql:
+            return []

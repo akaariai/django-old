@@ -192,10 +192,6 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # format as qualified_name gives. In plain case however we use
         # the given name as is. 
         if isinstance(name, tuple):
-            if plain:
-                return None, name[1]
-            else:
-                # quote_name will wrap the name with "", so remove those.
-                return None, self.connection.ops.qualified_name(name)[1:-1]
+            return None, self.connection.ops.qualified_name(name, not plain)[1:-1]
         else:
             return name

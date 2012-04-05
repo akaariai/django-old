@@ -169,6 +169,6 @@ class Command(NoArgsCommand):
         to the given database table name.
         """
         return ['    class Meta:',
-                '        db_table = %r' % qname[0],
-                '        db_schema = %r' % qname[1] or 'None',
+                '        db_table = %r' % qname[1],
+                '        db_schema = %r' % qname[0] or 'None',
                 '']

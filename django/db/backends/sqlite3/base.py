@@ -84,7 +84,11 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_mixed_date_datetime_comparisons = False
     has_bulk_insert = True
     can_combine_inserts_with_and_without_auto_increment_pk = True
-    safe_reuse_schemas = True
+    supports_foreign_keys = False
+    # SQLite doesn't support schemas at all, but our hack of appending
+    # the schema name to table name creates namespaced schemas from
+    # Django's perspective
+    namespaced_schemas = True
 
     def _supports_stddev(self):
         """Confirm support for STDDEV and related stats functions
@@ -140,11 +144,13 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return '"%s"' % name
 
-    def qualified_name(self, name):
+    def qualified_name(self, name, convert_name):
         # Fake schema support by using the schema as a prefix to the
-        # table name.
+        # table name. Keep record of what names are already qualified
+        # to avoid double-qualifying.
+
         schema = name[0] or self.connection.schema
-        if schema:
+        if convert_name and schema:
             return self.quote_name('%s_%s' % (schema, name[1]))
         else:
             return self.quote_name(name[1])
@@ -152,15 +158,17 @@ class DatabaseOperations(BaseDatabaseOperations):
     def no_limit_value(self):
         return -1
 
-    def sql_flush(self, style, tables, sequences):
+    def sql_flush(self, style, tables, sequences, from_db):
         # NB: The generated SQL below is specific to SQLite
         # Note: The DELETE FROM... SQL generated below works for SQLite databases
         # because constraints don't exist
-        sql = ['%s %s %s;' % \
+        sql = []
+        for table in tables:
+            sql.append('%s %s %s;' % \
                 (style.SQL_KEYWORD('DELETE'),
                  style.SQL_KEYWORD('FROM'),
-                 style.SQL_FIELD(self.qualified_name(table))
-                 ) for table in tables]
+                 style.SQL_FIELD(self.qualified_name(table, convert_name=not from_db))
+                 ))
         # Note: No requirement for reset of auto-incremented indices (cf. other
         # sql_flush() implementations). Just return SQL at this point
         return sql
