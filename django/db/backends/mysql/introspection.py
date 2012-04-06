@@ -33,9 +33,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         return self.get_qualified_tables_list(cursor, [])
 
     def get_qualified_tables_list(self, cursor, schemas):
-        schemas = list(schemas)
         schemas = [self.connection.convert_schema(s) for s in schemas]
-        schemas.append(self.connection.convert_schema(None))
+        default_schema = self.connection.convert_schema(None)
+        if default_schema:
+            schemas.append(default_schema)
         param_list = ', '.join(['%s']*len(schemas))
         cursor.execute("""
             SELECT table_schema, table_name
@@ -46,7 +47,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
     def get_table_description(self, cursor, qualified_name):
         "Returns a description of the table, with the DB-API cursor.description interface."
-        cursor.execute("SELECT * FROM %s LIMIT 1" % self.connection.ops.qualified_name(qualified_name))
+        cursor.execute("SELECT * FROM %s LIMIT 1" % self.connection.ops.qualified_name(qualified_name, True))
         return cursor.description
 
     def _name_to_index(self, cursor, qualified_name):
@@ -79,8 +80,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         for all key columns in given table.
         """
         key_columns = []
-        schema = qualified_name[0] or self.connection.schema or self.connection.settings_dict['NAME']
-        schema = self.connection.convert_schema(schema)
+        schema = self.connection.convert_schema(qualified_name[0])
         qualified_name = schema, qualified_name[1]
         try:
             cursor.execute("""
@@ -128,7 +128,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             {'primary_key': boolean representing whether it's the primary key,
              'unique': boolean representing whether it's a unique index}
         """
-        cursor.execute("SHOW INDEX FROM %s" % self.connection.ops.qualified_name(qualified_name))
+        cursor.execute("SHOW INDEX FROM %s" % self.connection.ops.qualified_name(qualified_name, True))
         indexes = {}
         for row in cursor.fetchall():
             indexes[row[4]] = {'primary_key': (row[2] == 'PRIMARY'), 'unique': not bool(row[1])}

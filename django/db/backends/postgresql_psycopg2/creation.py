@@ -58,7 +58,7 @@ class DatabaseCreation(BaseDatabaseCreation):
                 return (style.SQL_KEYWORD('CREATE INDEX') + ' ' +
                         style.SQL_TABLE(qn(truncate_name(index_name,self.connection.ops.max_name_length()))) + ' ' +
                         style.SQL_KEYWORD('ON') + ' ' +
-                        style.SQL_TABLE(qn3(qualified_name)) + ' ' +
+                        style.SQL_TABLE(qn3(qualified_name, True)) + ' ' +
                         "(%s%s)" % (style.SQL_FIELD(qn(f.column)), opclass) +
                         "%s;" % tablespace_sql)
 

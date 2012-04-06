@@ -169,8 +169,8 @@ class LongNameTest(TestCase):
         VLM = models.VeryLongModelNameZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
         VLM_m2m = VLM.m2m_also_quite_long_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.through
         tables = [
-            ('', VLM._meta.db_table),
-            ('', VLM_m2m._meta.db_table),
+            VLM._meta.qualified_name,
+            VLM_m2m._meta.qualified_name
         ]
         sequences = [
             {
@@ -180,7 +180,7 @@ class LongNameTest(TestCase):
             },
         ]
         cursor = connection.cursor()
-        for statement in connection.ops.sql_flush(no_style(), tables, sequences):
+        for statement in connection.ops.sql_flush(no_style(), tables, sequences, True):
             cursor.execute(statement)
 
 class SequenceResetTest(TestCase):

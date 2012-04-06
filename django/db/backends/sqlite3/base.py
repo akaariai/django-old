@@ -158,7 +158,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def no_limit_value(self):
         return -1
 
-    def sql_flush(self, style, tables, sequences, from_db):
+    def sql_flush(self, style, tables, sequences, from_django):
         # NB: The generated SQL below is specific to SQLite
         # Note: The DELETE FROM... SQL generated below works for SQLite databases
         # because constraints don't exist
@@ -167,7 +167,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql.append('%s %s %s;' % \
                 (style.SQL_KEYWORD('DELETE'),
                  style.SQL_KEYWORD('FROM'),
-                 style.SQL_FIELD(self.qualified_name(table, convert_name=not from_db))
+                 style.SQL_FIELD(self.qualified_name(table, from_django))
                  ))
         # Note: No requirement for reset of auto-incremented indices (cf. other
         # sql_flush() implementations). Just return SQL at this point

@@ -82,7 +82,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 [qualified_name[0], qualified_name[1]])
         null_map = dict(cursor.fetchall())
         cursor.execute(
-            "SELECT * FROM %s LIMIT 1" % self.connection.ops.qualified_name(qualified_name))
+            "SELECT * FROM %s LIMIT 1" % self.connection.ops.qualified_name(qualified_name, True))
         return [tuple([item for item in line[:6]] + [null_map[line[0]]==u'YES'])
                 for line in cursor.description]
 

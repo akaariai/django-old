@@ -894,7 +894,7 @@ class SQLInsertCompiler(SQLCompiler):
             ]
         if self.return_id and self.connection.features.can_return_id_from_insert:
             params = params[0]
-            col = "%s.%s" % (qn3(opts.qualified_name), qn(opts.pk.column))
+            col = "%s.%s" % (qn3(opts.qualified_name, True), qn(opts.pk.column))
             result.append("VALUES (%s)" % ", ".join(placeholders[0]))
             r_fmt, r_params = self.connection.ops.return_insert_id()
             result.append(r_fmt % col)

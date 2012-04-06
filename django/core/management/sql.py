@@ -109,12 +109,12 @@ def sql_flush(style, connection, only_django=False):
     """
     if only_django:
         tables = connection.introspection.django_table_names(only_existing=True)
-        from_db = False
+        from_django = True
     else:
         tables = connection.introspection.all_qualified_names()
-        from_db = True
+        from_django = False
     statements = connection.ops.sql_flush(
-        style, tables, connection.introspection.sequence_list(), from_db
+        style, tables, connection.introspection.sequence_list(), from_django
     )
     return statements
 

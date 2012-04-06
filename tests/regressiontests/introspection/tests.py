@@ -49,7 +49,7 @@ class IntrospectionTests(TestCase):
 
     def test_django_table_names(self):
         cursor = connection.cursor()
-        tblname = connection.ops.qualified_name((None, 'django_ixn_test_table'))
+        tblname = connection.ops.qualified_name((None, 'django_ixn_test_table'), True)
         cursor.execute('CREATE TABLE %s (id INTEGER);' % tblname)
         tl = connection.introspection.django_table_names()
         cursor.execute("DROP TABLE %s;" % tblname)
@@ -59,7 +59,7 @@ class IntrospectionTests(TestCase):
     def test_django_table_names_retval_type(self):
         # Ticket #15216
         cursor = connection.cursor()
-        tblname = connection.ops.qualified_name((None, 'django_ixn_test_table'))
+        tblname = connection.ops.qualified_name((None, 'django_ixn_test_table'), True)
         cursor.execute('CREATE TABLE %s (id INTEGER);' % tblname)
 
         tl = connection.introspection.django_table_names(only_existing=True)
@@ -69,8 +69,9 @@ class IntrospectionTests(TestCase):
         self.assertIs(type(tl), list)
 
     def test_installed_models(self):
-        tables = [(settings.DEFAULT_SCHEMA, Article._meta.db_table),
-                  (settings.DEFAULT_SCHEMA, Reporter._meta.db_table)]
+        conv = connection.introspection.table_name_converter
+        tables = [conv(Article._meta.qualified_name),
+                  conv(Reporter._meta.qualified_name)]
         models = connection.introspection.installed_models(tables)
         self.assertEqual(models, set([Article, Reporter]))
 
@@ -115,7 +116,7 @@ class IntrospectionTests(TestCase):
     @skipUnlessDBFeature('has_real_datatype')
     def test_postgresql_real_type(self):
         cursor = connection.cursor()
-        tblname = connection.ops.qualified_name((None, 'django_ixn_real_test_table'))
+        tblname = connection.ops.qualified_name((None, 'django_ixn_real_test_table'), True)
         cursor.execute("CREATE TABLE %s (number REAL);" % tblname)
         desc = connection.introspection.get_table_description(cursor, (None, 'django_ixn_real_test_table'))
         cursor.execute('DROP TABLE %s;' % tblname)

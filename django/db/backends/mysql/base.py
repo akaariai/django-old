@@ -251,16 +251,11 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return "`%s`" % name
 
-    def qualified_name(self, qname):
-        """
-        MySQL is funny in a way that if a query has schema.tbl and just plain
-        tbl, then mysql aliases both to tbl. qualify_hint tells us that the
-        query has some qualified_names in it and so we must qualify all
-        tables.
-        """
+    def qualified_name(self, qname, convert_name):
         schema = qname[0] or self.connection.schema
         if schema:
-            schema = self.connection.convert_schema(schema)
+            if convert_name:
+                schema = self.connection.convert_schema(schema)
             return "%s.%s" % (self.quote_name(schema),
                               self.quote_name(qname[1]))
         else:
@@ -269,7 +264,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     def random_function_sql(self):
         return 'RAND()'
 
-    def sql_flush(self, style, tables, sequences):
+    def sql_flush(self, style, tables, sequences, convert_names):
         # NB: The generated SQL below is specific to MySQL
         # 'TRUNCATE x;', 'TRUNCATE y;', 'TRUNCATE z;'... style SQL statements
         # to clear all tables of all data
@@ -277,7 +272,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql = ['SET FOREIGN_KEY_CHECKS = 0;']
             for table in tables:
                 sql.append('%s %s;' % (style.SQL_KEYWORD('TRUNCATE'),
-                                       style.SQL_FIELD(self.qualified_name(table))))
+                                       style.SQL_FIELD(self.qualified_name(table, convert_names))))
             sql.append('SET FOREIGN_KEY_CHECKS = 1;')
 
             # 'ALTER TABLE table AUTO_INCREMENT = 1;'... style SQL statements
@@ -285,7 +280,8 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql.extend(["%s %s %s %s %s;" % \
                 (style.SQL_KEYWORD('ALTER'),
                  style.SQL_KEYWORD('TABLE'),
-                 style.SQL_TABLE(self.qualified_name((sequence['schema'], sequence['table']))),
+                 style.SQL_TABLE(self.qualified_name((sequence['schema'], sequence['table']),
+                                                     convert_names)),
                  style.SQL_KEYWORD('AUTO_INCREMENT'),
                  style.SQL_FIELD('= 1'),
                 ) for sequence in sequences])
@@ -459,7 +455,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         self.cursor().execute('SET foreign_key_checks=1')
 
-    def check_constraints(self, table_names=None):
+    def check_constraints(self, table_names=None, convert_names=True):
         """
         Checks each table name in `table_names` for rows with invalid foreign key references. This method is
         intended to be used in conjunction with `disable_constraint_checking()` and `enable_constraint_checking()`, to
@@ -475,6 +471,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         qn3 = self.ops.qualified_name
         if table_names is None:
             table_names = self.introspection.get_visible_tables_list(cursor)
+            convert_names = True
         for table_name in table_names:
             primary_key_column_name = self.introspection.get_primary_key_column(cursor, table_name)
             if not primary_key_column_name:
@@ -486,8 +483,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                     LEFT JOIN %s as REFERRED
                     ON (REFERRING.`%s` = REFERRED.`%s`)
                     WHERE REFERRING.`%s` IS NOT NULL AND REFERRED.`%s` IS NULL"""
-                    % (primary_key_column_name, column_name, qn3(table_name), qn3(referenced_table_name),
-                    column_name, referenced_column_name, column_name, referenced_column_name))
+                    % (primary_key_column_name, column_name, qn3(table_name, convert_names),
+                       qn3(referenced_table_name, False), column_name, referenced_column_name,
+                       column_name, referenced_column_name))
                 for bad_row in cursor.fetchall():
                     raise utils.IntegrityError("The row in table '%s' with primary key '%s' has an invalid "
                         "foreign key: %s.%s contains a value '%s' that does not have a corresponding value in %s.%s."

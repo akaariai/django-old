@@ -145,6 +145,12 @@ class BaseDatabaseCreation(object):
         from django.db.backends.util import truncate_name
 
         if not model._meta.managed or model._meta.proxy:
+            # So, we have a reference to either unmanaged model or to
+            # a proxy model - we don't need to create references, as
+            # for proxy models one already exists, and for unmanaged
+            # models it is the responsibility of the user to do that.
+            if model in pending_references:
+                del pending_references[model]
             return []
         qn = self.connection.ops.quote_name
         qn3 = self.connection.ops.qualified_name
@@ -570,4 +576,5 @@ class BaseDatabaseCreation(object):
         different connections). The as_sql flag tells us if we should return
         the raw SQL used. This is needed for the "sql" management commands.
         """
+        print pending_references
         raise NotImplementedError
