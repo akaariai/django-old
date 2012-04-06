@@ -1,6 +1,7 @@
 import sys
 import time
 from django.db.backends.creation import BaseDatabaseCreation
+from django.core.management.color import no_style
 
 TEST_DATABASE_PREFIX = 'test_'
 PASSWORD = 'Im_a_lumberjack'
@@ -329,12 +330,13 @@ class DatabaseCreation(BaseDatabaseCreation):
     def sql_for_pending_references(self, model, style, pending_references,
                                    second_pass=False):
         """
-        Sad fact of life: On oracle it is impossible to do cross-schema
+        Sad fact of life: On Oracle it is impossible to do cross-schema
         references unless you explisitly grant REFERENCES on the referenced
         table, and in addition the reference is made from the schema
         containing the altered table (the one getting the new constraint).
-        To make things even nicer, we can't do the grant using the same user
-        we are giving the REFERENCES right, as you can't GRANT yourself.
+        To make this even nicer, it is impossible to do the GRANT using the
+        same user we are giving the REFERENCES right, as you can't GRANT
+        yourself.
 
         The solution we are using is to do the pending cross-schema references
         in two stages after all tables have been created:
@@ -345,12 +347,16 @@ class DatabaseCreation(BaseDatabaseCreation):
         To support this arrangement, we will create only non-cross-schema
         references unless we are explicitly told by the second_pass flag
         that it is safe to do the cross schema references.
+
+        It is possible to grant REFERENCES to public (but it seems other roles
+        will not work), but as we need to anyways do this multi-connection
+        dance it seems better to do the grants explicitly only when needed.
         """
-        # Split the "safe" and "unsafe" references apart, and call
-        # the super() method for those whish are safe to do.
         if second_pass:
             return super(DatabaseCreation, self).sql_for_pending_references(
                 model, style, pending_references)
+        # Split the "safe" and "unsafe" references apart, and call
+        # the super() method for the safe set.
         cross_schema_refs = []
         single_schema_refs = []
         conv = self.connection.convert_schema
@@ -372,6 +378,68 @@ class DatabaseCreation(BaseDatabaseCreation):
         return sql
 
     def post_create_pending_references(self, pending_references, as_sql=False):
-        print pending_references
-        if as_sql:
-            return []
+        # Build a dictionary: from_schema -> [(model, refs)...]
+        references_to_schema = {}
+        sql = []
+        for model, refs in pending_references.items():
+            schema = self.connection.convert_schema(model._meta.db_schema)
+            if schema not in references_to_schema:
+                references_to_schema[schema] = []
+            references_to_schema[schema].append((model, refs))
+        # Pass 1: give grants.
+        for schema, all_refs in references_to_schema.items():
+            grant_to = set()
+            for model, refs in all_refs:
+                to_user = self.connection.convert_schema(model._meta.db_schema)
+                if to_user != schema:
+                    grant_to.add((model, to_user))
+            sql.extend(self._grant_references(schema, grant_to, as_sql))
+        # Now we are ready for pass 2. This time we must connect as the user
+        # of the altered table's schema. So, first build a dictionary of
+        # from_schema -> [{model: [refs]}]
+        references_from_schema = {}
+        for model, refs in pending_references.items():
+            for ref in refs:
+                schema = self.connection.convert_schema(ref[0]._meta.db_schema)
+                if schema not in references_from_schema:
+                    references_from_schema[schema] = {}
+                if model not in references_from_schema[schema]:
+                    references_from_schema[schema][model] = []
+                references_from_schema[schema][model].append(ref)
+        # Pass 2: create the actual references
+        for schema, ref_dict in references_from_schema.items():
+            per_schema_sql = ['-- Connect as user "%s"' % schema] if as_sql else []
+            for model, refs in ref_dict.items():
+                ref_sql = self.sql_for_pending_references(model, no_style(),
+                                                          ref_dict, second_pass=True)
+                per_schema_sql.extend(ref_sql)
+            if not as_sql:
+                self._run_sql_as_user(schema, per_schema_sql)
+            sql.extend(per_schema_sql)
+        return sql
+
+    def _grant_references(self, schema, grant_to, as_sql):
+        sql = ['-- Connect as user "%s"' % schema] if as_sql else []
+        qn = self.connection.ops.quote_name
+        for model, user in grant_to:
+            sql.append('GRANT REFERENCES ON %s TO %s'
+                       % (qn(model._meta.db_table), qn(user)))
+        if not as_sql:
+            self._run_sql_as_user(schema, sql)
+        return sql
+
+    def _run_sql_as_user(self, user, sql):
+        if not sql:
+            return
+        print 'Connection as %s' % user
+        self.connection.close()
+        try:
+            old_settings = self.connection.settings_dict.copy()
+            self.connection.settings_dict['USER'] = user
+            cursor = self.connection.cursor()
+            for q in sql:
+                print q
+                cursor.execute(q)
+        finally:
+            self.connection.close()
+            self.connection.settings_dict = old_settings

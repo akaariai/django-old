@@ -50,9 +50,11 @@ class SchemaTests(TestCase):
         """
         Test that sql_flush contains some key pieces of SQL.
         """
-        found = False
         qname = connection.qname(SameName2)
-        for sql in sql_flush(no_style(), connection):
+        style = no_style()
+        flush_output = sql_flush(style, connection)
+        found = False
+        for sql in flush_output:
             if qname in sql:
                 found = True
                 break

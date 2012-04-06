@@ -47,7 +47,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         if not schemas:
             return []
         args = ', '.join(['%s']*len(schemas))
-        schemas = [s.upper() for s in schemas]
+        schemas = [self.connection.convert_schema(s).upper() for s in schemas]
         cursor.execute("""
             SELECT OWNER, TABLE_NAME
               FROM ALL_TABLES WHERE OWNER in (%s)""" % args,
@@ -57,7 +57,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     def get_table_description(self, cursor, qualified_name):
         "Returns a description of the table, with the DB-API cursor.description interface."
         cursor.execute("SELECT * FROM %s WHERE ROWNUM < 2"
-                       % self.connection.ops.qualified_name(qualified_name))
+                       % self.connection.ops.qualified_name(qualified_name, True))
         description = []
         for desc in cursor.description:
             description.append((desc[0].lower(),) + desc[1:])

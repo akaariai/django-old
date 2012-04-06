@@ -101,6 +101,7 @@ class BaseDatabaseCreation(object):
                 full_statement.append(tablespace_sql)
         full_statement.append(';')
         final_output.append('\n'.join(full_statement))
+        print final_output[-1]
 
         if opts.has_auto_field:
             # Add any extra SQL needed to support auto-incrementing primary

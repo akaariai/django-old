@@ -94,7 +94,7 @@ class DatabaseOperations(BaseDatabaseOperations):
         params = {
             'sq_name': self._get_sequence_name(qualified_name),
             'tr_name': self._get_trigger_name(qualified_name),
-            'tbl_name': self.qualified_name(qualified_name),
+            'tbl_name': self.qualified_name(qualified_name, True),
             'col_name' : self.quote_name(column),
         }
         sequence_sql = """
@@ -250,10 +250,11 @@ WHEN (new.%(col_name)s IS NULL)
                                                self.max_name_length())
         return name.upper()
 
-    def qualified_name(self, qname):
+    def qualified_name(self, qname, convert_name):
         schema = qname[0] or self.connection.schema
         if schema:
-            schema = self.connection.convert_schema(schema)
+            if convert_name:
+                schema = self.connection.convert_schema(schema)
             return "%s.%s" % (self.quote_name(schema),
                               self.quote_name(qname[1]))
         else:
@@ -288,7 +289,7 @@ WHEN (new.%(col_name)s IS NULL)
     def savepoint_rollback_sql(self, sid):
         return convert_unicode("ROLLBACK TO SAVEPOINT " + self.quote_name(sid))
 
-    def sql_flush(self, style, tables, sequences):
+    def sql_flush(self, style, tables, sequences, convert_names):
         # Return a list of 'TRUNCATE x;', 'TRUNCATE y;',
         # 'TRUNCATE z;'... style SQL statements
         if tables:
@@ -297,7 +298,7 @@ WHEN (new.%(col_name)s IS NULL)
             sql = ['%s %s %s;' % \
                     (style.SQL_KEYWORD('DELETE'),
                      style.SQL_KEYWORD('FROM'),
-                     style.SQL_FIELD(self.qualified_name(table)))
+                     style.SQL_FIELD(self.qualified_name(table, convert_names)))
                     for table in tables]
             # Since we've just deleted all the rows, running our sequence
             # ALTER code will reset the sequence to 0.
@@ -305,12 +306,13 @@ WHEN (new.%(col_name)s IS NULL)
                 qname = sequence_info['schema'], sequence_info['table']
                 schema = qname[0].upper()
                 sequence_name = self._get_sequence_name(qname[1])
-                table_name = self.qualified_name(qname)
+                table_name = self.qualified_name(qname, convert_names)
                 column_name = self.quote_name(sequence_info['column'] or 'id')
-                query = _get_sequence_reset_sql() % {'sequence': sequence_name,
-                                                     'schema': schema,
-                                                     'table': table_name,
-                                                     'column': column_name}
+                query = (_get_sequence_reset_sql(bool(schema))
+                         % {'sequence': sequence_name,
+                            'schema': schema,
+                            'table': table_name,
+                            'column': column_name})
                 sql.append(query)
             return sql
         else:
@@ -319,12 +321,12 @@ WHEN (new.%(col_name)s IS NULL)
     def sequence_reset_sql(self, style, model_list):
         from django.db import models
         output = []
-        query = _get_sequence_reset_sql()
         for model in model_list:
             for f in model._meta.local_fields:
                 if isinstance(f, models.AutoField):
-                    table_name = self.qualified_name(model._meta.qualified_name)
+                    table_name = self.qualified_name(model._meta.qualified_name, True)
                     schema = self.connection.convert_schema(model._meta.db_schema).upper()
+                    query = _get_sequence_reset_sql(bool(schema))
                     sequence_name = self._get_sequence_name(model._meta.db_table)
                     column_name = self.quote_name(f.column)
                     output.append(query % {'sequence': sequence_name,
@@ -336,8 +338,9 @@ WHEN (new.%(col_name)s IS NULL)
                     break
             for f in model._meta.many_to_many:
                 if not f.rel.through:
-                    table_name = self.qualified_name(f.m2m_qualified_name())
+                    table_name = self.qualified_name(f.m2m_qualified_name(), True)
                     schema = self.connection.convert_schema(f.m2m_qualified_name()[0]).upper()
+                    query = _get_sequence_reset_sql(bool(schema))
                     seq_table = f.m2m_qualified_name()[1]
                     sequence_name = self._get_sequence_name(seq_table)
                     column_name = self.quote_name('id')
@@ -402,13 +405,13 @@ WHEN (new.%(col_name)s IS NULL)
         name_length = self.max_name_length() - 3
         if isinstance(name, tuple):
             seq_name = '%s_SQ' % util.truncate_name(name[1], name_length).upper()
-            return self.qualified_name((name[0], seq_name))
+            return self.qualified_name((name[0], seq_name), True)
         return '%s_SQ' % util.truncate_name(name, name_length).upper()
 
     def _get_trigger_name(self, qualified_name):
         name_length = self.max_name_length() - 3
         trig_name = '%s_TR' % util.truncate_name(qualified_name[1], name_length).upper()
-        return self.qualified_name((qualified_name[0], trig_name))
+        return self.qualified_name((qualified_name[0], trig_name), True)
 
     def bulk_insert_sql(self, fields, num_values):
         items_sql = "SELECT %s FROM DUAL" % ", ".join(["%s"] * len(fields))
@@ -849,9 +852,10 @@ def to_unicode(s):
     return s
 
 
-def _get_sequence_reset_sql():
+def _get_sequence_reset_sql(with_schema=False):
     # TODO: colorize this SQL code with style.SQL_KEYWORD(), etc.
-    return """
+    if with_schema:
+        return """
 DECLARE
     table_value integer;
     seq_value integer;
@@ -861,6 +865,20 @@ BEGIN
            WHERE sequence_name = '%(sequence)s' AND sequence_owner = '%(schema)s';
     WHILE table_value > seq_value LOOP
         SELECT "%(schema)s"."%(sequence)s".nextval INTO seq_value FROM dual;
+    END LOOP;
+END;
+/"""
+    else:
+        return """
+DECLARE
+    table_value integer;
+    seq_value integer;
+BEGIN
+    SELECT NVL(MAX(%(column)s), 0) INTO table_value FROM %(table)s;
+    SELECT NVL(last_number - cache_size, 0) INTO seq_value FROM user_sequences
+           WHERE sequence_name = '%(sequence)s';
+    WHILE table_value > seq_value LOOP
+        SELECT "%(sequence)s".nextval INTO seq_value FROM dual;
     END LOOP;
 END;
 /"""

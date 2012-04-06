@@ -124,6 +124,8 @@ class Command(NoArgsCommand):
                     else:
                         print "Creating table %s" % model._meta.db_table
                 for statement in sql:
+                    if "DEFAULT_SCHEMA1" in statement:
+                        print "CREATING!", statement
                     cursor.execute(statement)
                 tables.add(connection.introspection.table_name_converter(model._meta.qualified_name))
 
