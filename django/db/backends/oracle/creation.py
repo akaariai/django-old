@@ -321,8 +321,7 @@ class DatabaseCreation(BaseDatabaseCreation):
         to_qname = field.rel.to._meta.qualified_name
         from_schema = self.connection.convert_schema(from_qname[0])
         to_schema = self.connection.convert_schema(to_qname[0])
-        if (from_schema and from_schema != self.connection.settings_dict['USER']
-                and from_schema != to_schema):
+        if (to_schema and to_schema != from_schema):
             # We must create this later on using a separate connection.
             return [], True
         return super(DatabaseCreation, self).sql_for_inline_foreign_key_references(field, known_models, style)
@@ -390,13 +389,15 @@ class DatabaseCreation(BaseDatabaseCreation):
         for schema, all_refs in references_to_schema.items():
             grant_to = set()
             for model, refs in all_refs:
-                to_user = self.connection.convert_schema(model._meta.db_schema)
-                if to_user != schema:
-                    grant_to.add((model, to_user))
+                for ref in refs:
+                    to_user = self.connection.convert_schema(ref[0]._meta.db_schema)
+                    if to_user != schema:
+                        grant_to.add((model, to_user))
             sql.extend(self._grant_references(schema, grant_to, as_sql))
-        # Now we are ready for pass 2. This time we must connect as the user
+        # Prepare for pass 2. This time we must connect as the user
         # of the altered table's schema. So, first build a dictionary of
-        # from_schema -> [{model: [refs]}]
+        # from_schema -> [{model: [refs]}], that is, build a
+        # pending_references for each schema separately.
         references_from_schema = {}
         for model, refs in pending_references.items():
             for ref in refs:
@@ -431,14 +432,12 @@ class DatabaseCreation(BaseDatabaseCreation):
     def _run_sql_as_user(self, user, sql):
         if not sql:
             return
-        print 'Connection as %s' % user
         self.connection.close()
         try:
             old_settings = self.connection.settings_dict.copy()
             self.connection.settings_dict['USER'] = user
             cursor = self.connection.cursor()
             for q in sql:
-                print q
                 cursor.execute(q)
         finally:
             self.connection.close()

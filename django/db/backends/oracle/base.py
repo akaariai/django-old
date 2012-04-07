@@ -304,7 +304,11 @@ WHEN (new.%(col_name)s IS NULL)
             # ALTER code will reset the sequence to 0.
             for sequence_info in sequences:
                 qname = sequence_info['schema'], sequence_info['table']
-                schema = qname[0].upper()
+                if convert_names:
+                    schema = self.connection.convert_schema(qname[0])
+                else:
+                    schema = qname[0]
+                schema = schema.upper()
                 sequence_name = self._get_sequence_name(qname[1])
                 table_name = self.qualified_name(qname, convert_names)
                 column_name = self.quote_name(sequence_info['column'] or 'id')
@@ -473,7 +477,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = DatabaseIntrospection(self)
         self.validation = BaseDatabaseValidation(self)
     
-    def convert_schema(self, schema, upper=False):
+    def convert_schema(self, schema):
         schema = schema or self.schema or self.settings_dict['USER']
         if (self.test_schema_prefix
                 and schema not in self.settings_dict['TEST_SCHEMAS']):
@@ -710,10 +714,8 @@ class FormatStylePlaceholderCursor(object):
         try:
             return self.cursor.execute(query, self._param_generator(params))
         except Database.IntegrityError, e:
-            print query
             raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]
         except Database.DatabaseError, e:
-            print query
             # cx_Oracle <= 4.4.0 wrongly raises a DatabaseError for ORA-01400.
             if hasattr(e.args[0], 'code') and e.args[0].code == 1400 and not isinstance(e, IntegrityError):
                 raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]

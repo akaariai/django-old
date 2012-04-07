@@ -39,8 +39,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
     def get_visible_tables_list(self, cursor):
         "Returns a list of table names in the current database."
-        cursor.execute("SELECT TABLE_NAME FROM USER_TABLES")
-        return [(None, row[0].lower()) for row in cursor.fetchall()]
+        def_schema = self.connection.convert_schema(None)
+        tables = self.get_qualified_tables_list(cursor, [def_schema])
+        return [(None, tbl) for _, tbl in tables]
 
     def get_qualified_tables_list(self, cursor, schemas):
         "Returns a list of table names in the given schemas list."
@@ -54,10 +55,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                        schemas)
         return [(row[0].lower(), row[1].lower()) for row in cursor.fetchall()]
 
-    def get_table_description(self, cursor, qualified_name):
+    def get_table_description(self, cursor, qname):
         "Returns a description of the table, with the DB-API cursor.description interface."
         cursor.execute("SELECT * FROM %s WHERE ROWNUM < 2"
-                       % self.connection.ops.qualified_name(qualified_name, True))
+                       % self.connection.ops.qualified_name(qname, False))
         description = []
         for desc in cursor.description:
             description.append((desc[0].lower(),) + desc[1:])
@@ -119,27 +120,36 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # "We were in the nick of time; you were in great peril!"
         schema = self.connection.convert_schema(qualified_name[0]).upper()
         table = qualified_name[1].upper()
+        # There can be multiple constraints for a given column, and we 
+        # are interested if _any_ of them is unique or primary key, hence
+        # the group by + max.
         sql = """\
-SELECT LOWER(all_tab_cols.column_name) AS column_name,
-       CASE all_constraints.constraint_type
-           WHEN 'P' THEN 1 ELSE 0
-       END AS is_primary_key,
-       CASE all_indexes.uniqueness
-           WHEN 'UNIQUE' THEN 1 ELSE 0
-       END AS is_unique
-FROM   all_tab_cols, all_cons_columns, all_constraints, all_ind_columns, all_indexes
-WHERE  all_tab_cols.column_name = all_cons_columns.column_name (+)
-  AND  all_tab_cols.table_name = all_cons_columns.table_name (+)
-  AND  all_tab_cols.owner = all_cons_columns.owner (+)
-  AND  all_cons_columns.constraint_name = all_constraints.constraint_name (+)
-  AND  all_constraints.constraint_type (+) = 'P'
-  AND  all_ind_columns.column_name (+) = all_tab_cols.column_name
-  AND  all_ind_columns.table_name (+) = all_tab_cols.table_name
-  AND  all_ind_columns.index_owner (+) = all_tab_cols.owner
-  AND  all_indexes.uniqueness (+) = 'UNIQUE'
-  AND  all_indexes.index_name (+) = all_ind_columns.index_name
-  AND  all_tab_cols.table_name = UPPER(%s)
-  AND  all_tab_cols.owner = UPPER(%s)
+SELECT column_name, max(is_primary_key), max(is_unique)
+  FROM (
+    SELECT LOWER(all_tab_cols.column_name) AS column_name,
+           CASE all_constraints.constraint_type
+               WHEN 'P' THEN 1 ELSE 0
+           END AS is_primary_key,
+           CASE all_indexes.uniqueness
+               WHEN 'UNIQUE' THEN 1 ELSE 0
+           END AS is_unique
+    FROM   all_tab_cols, all_cons_columns, all_constraints, all_ind_columns, all_indexes
+    WHERE  all_tab_cols.column_name = all_cons_columns.column_name (+)
+      AND  all_tab_cols.table_name = all_cons_columns.table_name (+)
+      AND  all_tab_cols.owner = all_cons_columns.owner (+)
+      AND  all_cons_columns.constraint_name = all_constraints.constraint_name (+)
+      AND  all_cons_columns.owner = all_constraints.owner (+)
+      AND  all_constraints.constraint_type (+) = 'P'
+      AND  all_ind_columns.column_name (+) = all_tab_cols.column_name
+      AND  all_ind_columns.table_name (+) = all_tab_cols.table_name
+      AND  all_ind_columns.index_owner (+) = all_tab_cols.owner
+      AND  all_indexes.uniqueness (+) = 'UNIQUE'
+      AND  all_indexes.index_name (+) = all_ind_columns.index_name
+      AND  all_indexes.table_owner (+) = all_ind_columns.index_owner
+      AND  all_tab_cols.table_name = UPPER(%s)
+      AND  all_tab_cols.owner = UPPER(%s)
+    )
+GROUP BY column_name
 """
         cursor.execute(sql, [table, schema])
         indexes = {}

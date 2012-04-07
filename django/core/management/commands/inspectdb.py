@@ -41,17 +41,19 @@ class Command(NoArgsCommand):
         yield ''
         yield 'from %s import models' % self.db_module
         yield ''
-        for qname in connection.introspection.get_visible_tables_list(cursor):
+        inspect = connection.introspection
+        for qname in inspect.get_visible_tables_list(cursor):
+            qname = connection.convert_schema(qname[0]), qname[1]
             yield 'class %s(models.Model):' % table2model(qname)
             try:
-                relations = connection.introspection.get_relations(cursor, qname)
+                relations = inspect.get_relations(cursor, qname)
             except NotImplementedError:
                 relations = {}
             try:
-                indexes = connection.introspection.get_indexes(cursor, qname)
+                indexes = inspect.get_indexes(cursor, qname)
             except NotImplementedError:
                 indexes = {}
-            for i, row in enumerate(connection.introspection.get_table_description(cursor, qname)):
+            for i, row in enumerate(inspect.get_table_description(cursor, qname)):
                 column_name = row[0]
                 att_name = column_name.lower()
                 comment_notes = [] # Holds Field notes, to be displayed in a Python comment.
@@ -118,7 +120,6 @@ class Command(NoArgsCommand):
                     extra_params['blank'] = True
                     if not field_type in ('TextField(', 'CharField('):
                         extra_params['null'] = True
-
                 field_desc = '%s = models.%s' % (att_name, field_type)
                 if extra_params:
                     if not field_desc.endswith('('):
