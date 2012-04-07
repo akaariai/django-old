@@ -43,7 +43,6 @@ class Command(NoArgsCommand):
         yield ''
         inspect = connection.introspection
         for qname in inspect.get_visible_tables_list(cursor):
-            qname = connection.convert_schema(qname[0]), qname[1]
             yield 'class %s(models.Model):' % table2model(qname)
             try:
                 relations = inspect.get_relations(cursor, qname)

@@ -2,6 +2,7 @@ import sys
 import time
 
 from django.conf import settings
+from django.db import QName
 from django.db.utils import load_backend
 from django.core.management.color import no_style
 
@@ -89,7 +90,7 @@ class BaseDatabaseCreation(object):
                      for f in field_constraints]))
 
         full_statement = [style.SQL_KEYWORD('CREATE TABLE') + ' ' +
-                          style.SQL_TABLE(qn3(opts.qualified_name, True)) + ' (']
+                          style.SQL_TABLE(qn3(opts.qualified_name)) + ' (']
         for i, line in enumerate(table_output): # Combine and add commas.
             full_statement.append(
                 '    %s%s' % (line, i < len(table_output)-1 and ',' or ''))
@@ -144,11 +145,12 @@ class BaseDatabaseCreation(object):
         """
         from django.db.backends.util import truncate_name
 
-        if not model._meta.managed or model._meta.proxy:
+        if not model._meta.managed:
             # So, we have a reference to either unmanaged model or to
             # a proxy model - we don't need to create references, as
             # for proxy models one already exists, and for unmanaged
             # models it is the responsibility of the user to do that.
+            print model
             if model in pending_references:
                 del pending_references[model]
             return []
@@ -171,7 +173,7 @@ class BaseDatabaseCreation(object):
                     r_col, col, self._digest(r_table, table))
                 final_output.append(style.SQL_KEYWORD('ALTER TABLE') +
                     ' %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s)%s;' %
-                    (qn3(r_qname, True), qn(truncate_name(
+                    (qn3(r_qname), qn(truncate_name(
                         r_name, self.connection.ops.max_name_length())),
                     qn(r_col), qname, qn(col),
                     self.connection.ops.deferrable_sql()))
@@ -186,9 +188,7 @@ class BaseDatabaseCreation(object):
         reference to be to default schema, not the same schema the from_table
         is. This method will fix this issue where that is a problem.
         """
-        if self.connection.convert_schema(from_table[0]):
-            ref_table = self.connection.convert_schema(ref_table[0]), ref_table[1]
-        return self.connection.ops.qualified_name(ref_table, True)
+        return self.connection.ops.qualified_name(ref_table)
 
     def sql_indexes_for_model(self, model, style):
         """
@@ -219,7 +219,7 @@ class BaseDatabaseCreation(object):
             output = [style.SQL_KEYWORD('CREATE INDEX') + ' ' +
                 style.SQL_TABLE(qualified_name) + ' ' +
                 style.SQL_KEYWORD('ON') + ' ' +
-                style.SQL_TABLE(qn3(model._meta.qualified_name, True)) + ' ' +
+                style.SQL_TABLE(qn3(model._meta.qualified_name)) + ' ' +
                 "(%s)" % style.SQL_FIELD(qn(f.column)) +
                 "%s;" % tablespace_sql]
         else:
@@ -236,7 +236,8 @@ class BaseDatabaseCreation(object):
         from django.db.backends.util import truncate_name
         i_name = '%s_%s' % (model._meta.db_table, self._digest(col))
         i_name = truncate_name(i_name, self.connection.ops.max_name_length())
-        return self.connection.ops.qualified_name((model._meta.db_schema, i_name), True)
+        return self.connection.ops.qualified_name(
+            QName(model._meta.db_schema, i_name, False))
 
     def sql_destroy_schema(self, schema, style):
         """
@@ -254,7 +255,7 @@ class BaseDatabaseCreation(object):
         # Drop the table now
         qn3 = self.connection.ops.qualified_name
         output = ['%s %s;' % (style.SQL_KEYWORD('DROP TABLE'),
-                              style.SQL_TABLE(qn3(model._meta.qualified_name, True)))]
+                              style.SQL_TABLE(qn3(model._meta.qualified_name)))]
         if model in references_to_delete:
             output.extend(self.sql_remove_table_constraints(
                 model, references_to_delete, style))
@@ -281,7 +282,7 @@ class BaseDatabaseCreation(object):
                 col, r_col, self._digest(table, r_table))
             output.append('%s %s %s %s;' % \
                 (style.SQL_KEYWORD('ALTER TABLE'),
-                style.SQL_TABLE(qn3(qname, True)),
+                style.SQL_TABLE(qn3(qname)),
                 style.SQL_KEYWORD(self.connection.ops.drop_foreignkey_sql()),
                 style.SQL_FIELD(qn(truncate_name(
                     r_name, self.connection.ops.max_name_length())))))

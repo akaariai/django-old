@@ -1,3 +1,4 @@
+from django.db import QName
 from django.db.backends import BaseDatabaseIntrospection
 import cx_Oracle
 import re
@@ -38,54 +39,59 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 data_type, description)
 
     def get_visible_tables_list(self, cursor):
-        "Returns a list of table names in the current database."
-        def_schema = self.connection.convert_schema(None)
-        tables = self.get_qualified_tables_list(cursor, [def_schema])
-        return [(None, tbl) for _, tbl in tables]
+        "Returns a list of visible tables"
+        return self.get_qualified_tables_list(cursor, [self.connection.settings_dict['USER']])
 
     def get_qualified_tables_list(self, cursor, schemas):
         "Returns a list of table names in the given schemas list."
+        default_schema = self.connection.convert_schema(None)
+        if default_schema:
+            schemas.append(default_schema)
         if not schemas:
             return []
-        args = ', '.join(['%s']*len(schemas))
-        schemas = [self.connection.convert_schema(s).upper() for s in schemas]
+        param_list = ', '.join(['%s']*len(schemas))
+        schemas = [s.upper() for s in schemas]
         cursor.execute("""
             SELECT OWNER, TABLE_NAME
-              FROM ALL_TABLES WHERE OWNER in (%s)""" % args,
-                       schemas)
-        return [(row[0].lower(), row[1].lower()) for row in cursor.fetchall()]
+              FROM ALL_TABLES WHERE OWNER in (%s)""" % param_list, schemas)
+        return [QName(row[0].lower(), row[1].lower(), True)
+                for row in cursor.fetchall()]
 
     def get_table_description(self, cursor, qname):
         "Returns a description of the table, with the DB-API cursor.description interface."
         cursor.execute("SELECT * FROM %s WHERE ROWNUM < 2"
-                       % self.connection.ops.qualified_name(qname, False))
+                       % self.connection.ops.qualified_name(qname))
         description = []
         for desc in cursor.description:
             description.append((desc[0].lower(),) + desc[1:])
         return description
 
-    def table_name_converter(self, name, plain=False):
-        "Table name comparison is case insensitive under Oracle"
-        if isinstance(name, tuple):
-            schema = self.connection.convert_schema(name[0])
-            return (schema and schema.lower() or None, name[1].lower())
-        else:
-            return name.lower()
+    def identifier_converter(self, name):
+        return name.lower()
 
-    def _name_to_index(self, cursor, qualified_name):
+    def qname_converter(self, qname, force_schema=False):
+        assert isinstance(qname, QName)
+        if qname.db_format and (qname.schema or not force_schema):
+            return qname
+        schema = self.connection.convert_schema(qname.schema)
+        if not schema and force_schema:
+            schema = self.connection.settings_dict['USER']
+        return QName(schema, qname.table, True)
+
+    def _name_to_index(self, cursor, qname):
         """
         Returns a dictionary of {field_name: field_index} for the given table.
         Indexes are 0-based.
         """
-        return dict([(d[0], i) for i, d in enumerate(self.get_table_description(cursor, qualified_name))])
+        return dict([(d[0], i) for i, d in enumerate(self.get_table_description(cursor, qname))])
 
-    def get_relations(self, cursor, qualified_name):
+    def get_relations(self, cursor, qname):
         """
         Returns a dictionary of {field_index: (field_index_other_table, other_table)}
         representing all relationships to the given table. Indexes are 0-based.
         """
-        schema = self.connection.convert_schema(qualified_name[0]).upper()
-        table = qualified_name[1].upper()
+        qname = self.qname_converter(qname, force_schema=True)
+        schema, table = qname.schema.upper(), qname.table.upper()
         cursor.execute("""
     SELECT ta.column_id - 1, tb.table_name, tb.owner, tb.column_id - 1
     FROM   all_constraints, ALL_CONS_COLUMNS ca, ALL_CONS_COLUMNS cb,
@@ -101,14 +107,16 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
            all_constraints.r_constraint_name = cb.constraint_name AND
            cb.table_name = tb.table_name AND
            cb.column_name = tb.column_name AND
-           ca.position = cb.position""", [table, schema, table, schema, table, schema])
+           ca.position = cb.position""", [table, schema, table, schema,
+                                          table, schema])
 
         relations = {}
         for row in cursor.fetchall():
-            relations[row[0]] = (row[3], (row[2].lower(), row[1].lower()))
+            relations[row[0]] = (
+                row[3], QName(row[2].lower(), row[1].lower(), True))
         return relations
 
-    def get_indexes(self, cursor, qualified_name):
+    def get_indexes(self, cursor, qname):
         """
         Returns a dictionary of fieldname -> infodict for the given table,
         where each infodict is in the format:
@@ -118,8 +126,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         # This query retrieves each index on the given table, including the
         # first associated field name
         # "We were in the nick of time; you were in great peril!"
-        schema = self.connection.convert_schema(qualified_name[0]).upper()
-        table = qualified_name[1].upper()
+        qname = self.qname_converter(qname, force_schema=True)
+        schema, table = qname.schema.upper(), qname.table.upper()
         # There can be multiple constraints for a given column, and we 
         # are interested if _any_ of them is unique or primary key, hence
         # the group by + max.
@@ -146,8 +154,8 @@ SELECT column_name, max(is_primary_key), max(is_unique)
       AND  all_indexes.uniqueness (+) = 'UNIQUE'
       AND  all_indexes.index_name (+) = all_ind_columns.index_name
       AND  all_indexes.table_owner (+) = all_ind_columns.index_owner
-      AND  all_tab_cols.table_name = UPPER(%s)
-      AND  all_tab_cols.owner = UPPER(%s)
+      AND  all_tab_cols.table_name = %s
+      AND  all_tab_cols.owner = %s
     )
 GROUP BY column_name
 """

@@ -339,4 +339,4 @@ class TransactionalProxyModelTests(TransactionTestCase):
             Improvement.objects.create(summary='foof', version='foof',
                                        reporter_id=1, associated_bug_id=1,
                                        assignee=t)
-        self.assertRaises(IntegrityError, create_failing_pk())
+        self.assertRaises(IntegrityError, create_failing_pk)

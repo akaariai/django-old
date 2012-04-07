@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.management.color import no_style
 from django.core.exceptions import ImproperlyConfigured
 from django.db import (backend, connection, connections, DEFAULT_DB_ALIAS,
-    IntegrityError, transaction)
+    IntegrityError, transaction, QName)
 from django.db.backends.signals import connection_created
 from django.db.backends.postgresql_psycopg2 import version as pg_version
 from django.db.utils import ConnectionHandler, DatabaseError, load_backend
@@ -129,7 +129,7 @@ class ParameterHandlingTest(TestCase):
         "An executemany call with too many/not enough parameters will raise an exception (Refs #12612)"
         cursor = connection.cursor()
         query = ('INSERT INTO %s (%s, %s) VALUES (%%s, %%s)' % (
-            connection.introspection.table_name_converter('backends_square'),
+            connection.introspection.identifier_converter('backends_square'),
             connection.ops.quote_name('root'),
             connection.ops.quote_name('square')
         ))
@@ -175,12 +175,11 @@ class LongNameTest(TestCase):
         sequences = [
             {
                 'column': VLM._meta.pk.column,
-                'table': VLM._meta.db_table,
-                'schema': '',
+                'qname': QName(None, VLM._meta.db_table, False),
             },
         ]
         cursor = connection.cursor()
-        for statement in connection.ops.sql_flush(no_style(), tables, sequences, True):
+        for statement in connection.ops.sql_flush(no_style(), tables, sequences):
             cursor.execute(statement)
 
 class SequenceResetTest(TestCase):

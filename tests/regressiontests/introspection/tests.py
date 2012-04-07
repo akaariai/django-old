@@ -3,7 +3,7 @@ from __future__ import absolute_import
 from functools import update_wrapper
 
 from django.conf import settings
-from django.db import connection
+from django.db import connection, QName
 from django.test import TestCase, skipUnlessDBFeature, skipIfDBFeature
 
 from .models import Reporter, Article
@@ -40,8 +40,8 @@ class IntrospectionTests(TestCase):
     __metaclass__ = IgnoreNotimplementedError
 
     def test_table_names(self):
-        conv = connection.introspection.table_name_converter
-        tl = connection.introspection.all_qualified_names(converted=True)
+        conv = connection.introspection.qname_converter
+        tl = connection.introspection.all_qualified_names()
         self.assertTrue(conv(Reporter._meta.qualified_name) in tl,
                      "'%s' isn't in table_list()." % Reporter._meta.db_table)
         self.assertTrue(conv(Article._meta.qualified_name) in tl,
@@ -49,7 +49,8 @@ class IntrospectionTests(TestCase):
 
     def test_django_table_names(self):
         cursor = connection.cursor()
-        tblname = connection.ops.qualified_name((None, 'django_ixn_test_table'), True)
+        tblname = connection.ops.qualified_name(
+            QName(None, 'django_ixn_test_table', False))
         cursor.execute('CREATE TABLE %s (id INTEGER);' % tblname)
         tl = connection.introspection.django_table_names()
         cursor.execute("DROP TABLE %s;" % tblname)
@@ -59,7 +60,8 @@ class IntrospectionTests(TestCase):
     def test_django_table_names_retval_type(self):
         # Ticket #15216
         cursor = connection.cursor()
-        tblname = connection.ops.qualified_name((None, 'django_ixn_test_table'), True)
+        tblname = connection.ops.qualified_name(
+            QName(None, 'django_ixn_test_table', False))
         cursor.execute('CREATE TABLE %s (id INTEGER);' % tblname)
 
         tl = connection.introspection.django_table_names(only_existing=True)
@@ -69,7 +71,7 @@ class IntrospectionTests(TestCase):
         self.assertIs(type(tl), list)
 
     def test_installed_models(self):
-        conv = connection.introspection.table_name_converter
+        conv = connection.introspection.qname_converter
         tables = [conv(Article._meta.qualified_name),
                   conv(Reporter._meta.qualified_name)]
         models = connection.introspection.installed_models(tables)
@@ -77,22 +79,21 @@ class IntrospectionTests(TestCase):
 
     def test_sequence_list(self):
         sequences = connection.introspection.sequence_list()
-        schema, table = connection.introspection.table_name_converter(Reporter._meta.qualified_name)
-        expected = {'table': table, 'column': 'id',
-                    'schema': schema}
+        qname = connection.introspection.qname_converter(Reporter._meta.qualified_name)
+        expected = {'qname': qname, 'column': 'id'}
         self.assertTrue(expected in sequences,
                      'Reporter sequence not found in sequence_list()')
 
     def test_get_table_description_names(self):
         cursor = connection.cursor()
-        tbl = connection.introspection.table_name_converter(Reporter._meta.qualified_name)
+        tbl = connection.introspection.qname_converter(Reporter._meta.qualified_name)
         desc = connection.introspection.get_table_description(cursor, tbl)
         self.assertEqual([r[0] for r in desc],
                          [f.column for f in Reporter._meta.fields])
 
     def test_get_table_description_types(self):
         cursor = connection.cursor()
-        tbl = connection.introspection.table_name_converter(Reporter._meta.qualified_name)
+        tbl = connection.introspection.qname_converter(Reporter._meta.qualified_name)
         desc = connection.introspection.get_table_description(cursor, tbl)
         self.assertEqual(
             [datatype(r[1], r) for r in desc],
@@ -105,7 +106,7 @@ class IntrospectionTests(TestCase):
     @skipIfDBFeature('interprets_empty_strings_as_nulls')
     def test_get_table_description_nullable(self):
         cursor = connection.cursor()
-        tbl = connection.introspection.table_name_converter(Reporter._meta.qualified_name)
+        tbl = connection.introspection.qname_converter(Reporter._meta.qualified_name)
         desc = connection.introspection.get_table_description(cursor, tbl)
         self.assertEqual(
             [r[6] for r in desc],
@@ -116,17 +117,19 @@ class IntrospectionTests(TestCase):
     @skipUnlessDBFeature('has_real_datatype')
     def test_postgresql_real_type(self):
         cursor = connection.cursor()
-        tblname = connection.ops.qualified_name((None, 'django_ixn_real_test_table'), True)
+        tblname = connection.ops.qualified_name(
+            QName(None, 'django_ixn_real_test_table', False))
         cursor.execute("CREATE TABLE %s (number REAL);" % tblname)
-        desc = connection.introspection.get_table_description(cursor, (None, 'django_ixn_real_test_table'))
+        desc = connection.introspection.get_table_description(
+            cursor, QName(None, 'django_ixn_real_test_table', False))
         cursor.execute('DROP TABLE %s;' % tblname)
         self.assertEqual(datatype(desc[0][1], desc[0]), 'FloatField')
 
     def test_get_relations(self):
         cursor = connection.cursor()
-        tbl = connection.introspection.table_name_converter(Article._meta.qualified_name)
+        tbl = connection.introspection.qname_converter(Article._meta.qualified_name)
         relations = connection.introspection.get_relations(cursor, tbl)
-        rep_tbl = connection.introspection.table_name_converter(Reporter._meta.qualified_name)
+        rep_tbl = connection.introspection.qname_converter(Reporter._meta.qualified_name)
 
         # Older versions of MySQL don't have the chops to report on this stuff,
         # so just skip it if no relations come back. If they do, though, we
@@ -141,25 +144,23 @@ class IntrospectionTests(TestCase):
             # TODO: this testing logic is UGLY!
             schema = connection.convert_schema(Reporter._meta.qualified_name[0])
             self.assertTrue(3 in relations)
-            relations[3] = (relations[3][0], (schema, relations[3][1][1]))
+            relations[3] = (relations[3][0], (schema, relations[3][1][1], True))
             self.assertEqual(relations, {3: (0, rep_tbl)})
 
     def test_get_key_columns(self):
         cursor = connection.cursor()
-        tbl = connection.introspection.table_name_converter(Article._meta.qualified_name)
-        rep_tbl = connection.introspection.table_name_converter(Reporter._meta.qualified_name)
-        key_columns = connection.introspection.get_key_columns(cursor, tbl)
+        rep_tbl = connection.introspection.qname_converter(Reporter._meta.qualified_name, force_schema=True)
+        key_columns = connection.introspection.get_key_columns(cursor, Article._meta.qualified_name)
         self.assertEqual(key_columns, [(u'reporter_id', rep_tbl, u'id')])
 
     def test_get_primary_key_column(self):
         cursor = connection.cursor()
-        tbl = connection.introspection.table_name_converter(Article._meta.qualified_name)
-        primary_key_column = connection.introspection.get_primary_key_column(cursor, tbl)
+        primary_key_column = connection.introspection.get_primary_key_column(cursor, Article._meta.qualified_name)
         self.assertEqual(primary_key_column, u'id')
 
     def test_get_indexes(self):
         cursor = connection.cursor()
-        tbl = connection.introspection.table_name_converter(Article._meta.qualified_name)
+        tbl = connection.introspection.qname_converter(Article._meta.qualified_name)
         indexes = connection.introspection.get_indexes(cursor, tbl)
         self.assertEqual(indexes['reporter_id'], {'unique': False, 'primary_key': False})
 
