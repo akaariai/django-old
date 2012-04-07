@@ -145,7 +145,7 @@ class BaseDatabaseCreation(object):
         """
         from django.db.backends.util import truncate_name
 
-        if not model._meta.managed or model._meta.proxy:
+        if not model._meta.managed:
             # So, we have a reference to either unmanaged model or to
             # a proxy model - we don't need to create references, as
             # for proxy models one already exists, and for unmanaged
