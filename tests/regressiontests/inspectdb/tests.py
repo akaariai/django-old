@@ -12,7 +12,7 @@ class InspectDBTestCase(TestCase):
     @skipUnlessDBFeature('can_introspect_foreign_keys')
     def test_attribute_name_not_python_keyword(self):
         from django.db import connection
-        _, tbl = connection.introspection.table_name_converter(People._meta.qualified_name)
+        _, tbl, _ = connection.introspection.qname_converter(People._meta.qualified_name)
         mname = ''.join(t.title() for t in tbl.split('_'))
         out = StringIO()
         call_command('inspectdb', stdout=out)

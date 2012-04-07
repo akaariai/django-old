@@ -2,7 +2,7 @@ from itertools import izip
 
 from django.conf import settings
 from django.core.exceptions import FieldError
-from django.db import transaction
+from django.db import transaction, QName
 from django.db.backends.util import truncate_name
 from django.db.models.query_utils import select_related_descend
 from django.db.models.sql.constants import *
@@ -47,7 +47,7 @@ class SQLCompiler(object):
             self.quote_cache[name] = name
             return name
         if isinstance(name, tuple):
-            r = self.connection.ops.qualified_name(name, True)
+            r = self.connection.ops.qualified_name(name)
         else:
             r = self.connection.ops.quote_name(name)
         self.quote_cache[name] = r
@@ -529,8 +529,8 @@ class SQLCompiler(object):
             first = False
         for t in self.query.extra_tables:
             # Plain string table names are assumed to be in default schema
-            if not isinstance(t, tuple):
-                t = self.connection.schema, t
+            if not isinstance(t, QName):
+                t = QName(self.connection.schema, t, False)
             # Only add the table if it is not already in the query.
             if t not in self.query.table_map or self.query.alias_refcount[t] == 0:
                 # This will add the table into the query properly, however we
@@ -864,7 +864,7 @@ class SQLInsertCompiler(SQLCompiler):
         qn = self.connection.ops.quote_name
         qn3 = self.connection.ops.qualified_name
         opts = self.query.model._meta
-        result = ['INSERT INTO %s' % qn3(opts.qualified_name, True)]
+        result = ['INSERT INTO %s' % qn3(opts.qualified_name)]
 
         has_fields = bool(self.query.fields)
         fields = self.query.fields if has_fields else [opts.pk]
@@ -894,7 +894,7 @@ class SQLInsertCompiler(SQLCompiler):
             ]
         if self.return_id and self.connection.features.can_return_id_from_insert:
             params = params[0]
-            col = "%s.%s" % (qn3(opts.qualified_name, True), qn(opts.pk.column))
+            col = "%s.%s" % (qn3(opts.qualified_name), qn(opts.pk.column))
             result.append("VALUES (%s)" % ", ".join(placeholders[0]))
             r_fmt, r_params = self.connection.ops.return_insert_id()
             result.append(r_fmt % col)
@@ -947,7 +947,7 @@ class SQLUpdateCompiler(SQLCompiler):
         if not self.query.values:
             return '', ()
         opts = self.query.model._meta
-        table = self.connection.ops.qualified_name(opts.qualified_name, True)
+        table = self.connection.ops.qualified_name(opts.qualified_name)
         qn = self.quote_name_unless_alias
         alias = qn(self.query.tables[0])
         if table == alias:

@@ -1,6 +1,6 @@
 from operator import attrgetter
 
-from django.db import connection, router
+from django.db import connection, router, QName
 from django.db.backends import util
 from django.db.models import signals, get_model
 from django.db.models.fields import (AutoField, Field, IntegerField,
@@ -1150,7 +1150,7 @@ class ManyToManyField(RelatedField, Field):
         "Function that can be curried to provide the qualified m2m table name for this relation"
         schema = self._get_m2m_db_schema(opts)
         table = self._get_m2m_db_table(opts)
-        return (schema, table)
+        return QName(schema, table, False)
 
     def _get_m2m_attr(self, related, attr):
         "Function that can be curried to provide the source accessor or DB column name for the m2m table"

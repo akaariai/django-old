@@ -1,4 +1,5 @@
 import re
+from django.db import QName
 from django.db.backends import BaseDatabaseIntrospection
 
 # This light wrapper "fakes" a dictionary interface, because some SQLite data
@@ -49,7 +50,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             SELECT name FROM sqlite_master
             WHERE type='table' AND NOT name='sqlite_sequence'
             ORDER BY name""")
-        return [(None, row[0]) for row in cursor.fetchall()]
+        return [QName(None, row[0], True) for row in cursor.fetchall()]
 
     def get_table_description(self, cursor, qualified_name):
         "Returns a description of the table, with the DB-API cursor.description interface."
@@ -99,17 +100,18 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
                 name = other_desc.split(' ', 1)[0].strip('"')
                 if name == column:
-                    relations[field_index] = (other_index, (None, table))
+                    relations[field_index] = (other_index,
+                                              QName(None, table, True))
                     break
 
         return relations
 
-    def get_key_columns(self, cursor, qualified_name):
+    def get_key_columns(self, cursor, qname):
         """
         Returns a list of (column_name, referenced_table_name, referenced_column_name) for all
         key columns in given table.
         """
-        table_name = qualified_name[1]
+        table_name = self.qname_converter(qname)[1]
         key_columns = []
 
         # Schema for this table
@@ -131,7 +133,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
 
             # This will append (column_name, referenced_table_name, referenced_column_name) to key_columns
             add = tuple([s.strip('"') for s in m.groups()])
-            add = add[0], (None, add[1]), add[2]
+            add = add[0], (None, add[1], True), add[2]
             key_columns.append(add)
 
         return key_columns
@@ -162,11 +164,12 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             indexes[name]['unique'] = True
         return indexes
 
-    def get_primary_key_column(self, cursor, qualified_name):
+    def get_primary_key_column(self, cursor, qname):
         """
         Get the column name of the primary key for the given table.
         """
-        table_name = qualified_name[1]
+        qname = self.qname_converter(qname)
+        table_name = qname[1]
         # Don't use PRAGMA because that causes issues with some transactions
         cursor.execute("SELECT sql FROM sqlite_master WHERE tbl_name = %s AND type = %s", [table_name, "table"])
         results = cursor.fetchone()[0].strip()
@@ -187,11 +190,13 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                  'pk': field[5]     # undocumented
                  } for field in cursor.fetchall()]
 
-    def table_name_converter(self, name, plain=False):
-        # In schema-qualified case we need to give back the exact same
-        # format as qualified_name gives. In plain case however we use
-        # the given name as is. 
-        if isinstance(name, tuple):
-            return None, self.connection.ops.qualified_name(name, not plain)[1:-1]
-        else:
-            return name
+    def identifier_converter(self, identifier):
+        return identifier
+
+    def qname_converter(self, qname, force_schema=False):
+        # For SQLite force_schema does nothing, as the default schema is
+        # None.
+        assert isinstance(qname, QName)
+        assert not (qname.schema and qname.db_format)
+        return QName(None, self.connection.ops.qualified_name(qname)[1:-1],
+                     True)

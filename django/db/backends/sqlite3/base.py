@@ -11,7 +11,7 @@ import warnings
 import re
 import sys
 
-from django.db import utils
+from django.db import utils, QName
 from django.db.backends import *
 from django.db.backends.signals import connection_created
 from django.db.backends.sqlite3.client import DatabaseClient
@@ -144,21 +144,26 @@ class DatabaseOperations(BaseDatabaseOperations):
             return name # Quoting once is enough.
         return '"%s"' % name
 
-    def qualified_name(self, name, convert_name):
+    def qualified_name(self, qname):
         # Fake schema support by using the schema as a prefix to the
         # table name. Keep record of what names are already qualified
         # to avoid double-qualifying.
-
-        schema = name[0] or self.connection.schema
-        if convert_name and schema:
-            return self.quote_name('%s_%s' % (schema, name[1]))
+        assert isinstance(qname, QName)
+        if qname.db_format:
+            # A name from DB must not have a schema (no schema support)
+            assert not qname.schema
+            schema = None
         else:
-            return self.quote_name(name[1])
+            schema = qname.schema or self.connection.schema
+        if schema:
+            return self.quote_name('%s_%s' % (schema, qname.table))
+        else:
+            return self.quote_name(qname.table)
 
     def no_limit_value(self):
         return -1
 
-    def sql_flush(self, style, tables, sequences, from_django):
+    def sql_flush(self, style, tables, sequences):
         # NB: The generated SQL below is specific to SQLite
         # Note: The DELETE FROM... SQL generated below works for SQLite databases
         # because constraints don't exist
@@ -167,7 +172,7 @@ class DatabaseOperations(BaseDatabaseOperations):
             sql.append('%s %s %s;' % \
                 (style.SQL_KEYWORD('DELETE'),
                  style.SQL_KEYWORD('FROM'),
-                 style.SQL_FIELD(self.qualified_name(table, from_django))
+                 style.SQL_FIELD(self.qualified_name(table))
                  ))
         # Note: No requirement for reset of auto-incremented indices (cf. other
         # sql_flush() implementations). Just return SQL at this point
@@ -319,7 +324,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if table_names is None:
             table_names = self.introspection.get_visible_tables_list(cursor)
         else:
-            table_names = [self.introspection.table_name_converter(t) for t in table_names]
+            table_names = [self.introspection.qname_converter(t) for t in table_names]
         for table_name in table_names:
             primary_key_column_name = self.introspection.get_primary_key_column(cursor, table_name)
             if not primary_key_column_name:

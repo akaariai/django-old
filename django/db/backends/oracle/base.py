@@ -4,12 +4,12 @@ Oracle database backend for Django.
 Requires cx_Oracle: http://cx-oracle.sourceforge.net/
 """
 
-
 import datetime
 import decimal
 import sys
 import warnings
 
+from django.db import QName
 
 def _setup_environment(environ):
     import platform
@@ -250,15 +250,18 @@ WHEN (new.%(col_name)s IS NULL)
                                                self.max_name_length())
         return name.upper()
 
-    def qualified_name(self, qname, convert_name):
-        schema = qname[0] or self.connection.schema
+    def qualified_name(self, qname):
+        assert isinstance(qname, QName)
+        schema = qname.schema
+        if not qname.db_format:
+            if not schema:
+                schema = self.connection.schema
+            schema = self.connection.convert_schema(schema)
         if schema:
-            if convert_name:
-                schema = self.connection.convert_schema(schema)
             return "%s.%s" % (self.quote_name(schema),
-                              self.quote_name(qname[1]))
+                              self.quote_name(qname.table))
         else:
-            return self.quote_name(qname[1])
+            return self.quote_name(qname.table)
 
     def random_function_sql(self):
         return "DBMS_RANDOM.RANDOM"
@@ -478,7 +481,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.validation = BaseDatabaseValidation(self)
     
     def convert_schema(self, schema):
-        schema = schema or self.schema or self.settings_dict['USER']
+        schema = schema or self.schema
         if (self.test_schema_prefix
                 and schema not in self.settings_dict['TEST_SCHEMAS']):
             return truncate_name('%s%s' % (self.test_schema_prefix, schema),

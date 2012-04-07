@@ -2,6 +2,7 @@ import re
 from bisect import bisect
 
 from django.conf import settings
+from django.db import QName
 from django.db.models.related import RelatedObject
 from django.db.models.fields.related import ManyToManyRel
 from django.db.models.fields import AutoField, FieldDoesNotExist
@@ -27,7 +28,7 @@ class Options(object):
         self.verbose_name_plural = None
         self.db_table = ''
         self.db_schema = ''
-        self.qualified_name = ('', '')
+        self.qualified_name = QName(schema=None, table='', db_format=False)
         self.ordering = []
         self.unique_together =  []
         self.permissions =  []
@@ -118,7 +119,8 @@ class Options(object):
             # correctly except if different connections happen to have the same
             # max_name_length.
             self.db_table = truncate_name(self.db_table, connection.ops.max_name_length())
-        self.qualified_name = (self.db_schema, self.db_table)
+        self.qualified_name = QName(schema=self.db_schema, table=self.db_table,
+                                    db_format=False)
 
     def _prepare(self, model):
         if self.order_with_respect_to:

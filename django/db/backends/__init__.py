@@ -7,7 +7,7 @@ except ImportError:
 from contextlib import contextmanager
 
 from django.conf import settings
-from django.db import DEFAULT_DB_ALIAS
+from django.db import DEFAULT_DB_ALIAS, QName
 from django.db.backends import util
 from django.db.transaction import TransactionManagementError
 from django.utils.importlib import import_module
@@ -327,7 +327,7 @@ class BaseDatabaseWrapper(object):
         Given a model class or instance, returns its current database table
         name in schema qualified format.
         """
-        return self.ops.qualified_name(model._meta.qualified_name, True)
+        return self.ops.qualified_name(model._meta.qualified_name)
 
 class BaseDatabaseFeatures(object):
     allows_group_by_pk = False
@@ -924,18 +924,28 @@ class BaseDatabaseIntrospection(object):
         distinguish between a FloatField and IntegerField, for example."""
         return self.data_types_reverse[data_type]
 
-    def table_name_converter(self, name, plain=False):
+    def qname_converter(self, qname, force_schema=False):
         """
         Apply a conversion to the name for the purposes of comparison.
 
         The default table name converter is for case sensitive comparison.
 
-        The given name can be either a tuple representing a schema qualified
-        name, or just a table name. If plain is set, then backends should
-        not use default schema or test schema prefix when doing the
-        conversion.
+        The given name must be a QName. If force_schema is set, then backends
+        should try to append a default schema name to the given name if
+        applicable for the backend.
         """
-        return name
+        return qname
+
+    def identifier_converter(self, identifier):
+        """
+        On some backends we need to do a little acrobaty to convert the names
+        from the DB and names from Models into consistent format. For example,
+        the return types from DB might be upper-case, but we need them
+        lower-case for comparisons. This method can be used to convert
+        identifiers into consistent format.
+        """
+        return identifier
+
 
     def table_names(self):
         "Returns a list of names of all tables that are visible in the database."
@@ -958,17 +968,19 @@ class BaseDatabaseIntrospection(object):
         else:
             return 
         
-    def all_qualified_names(self, converted=False):
+    def all_qualified_names(self):
+        """
+        Gets all table names from the database. Note that it is intentional
+        that visible tables appear both as unqualified and qualified tables.
+        """
         cursor = self.connection.cursor()
         nonqualified_tables = self.get_visible_tables_list(cursor)
         schemas = self.connection.creation.get_schemas()
+        schemas = [self.connection.convert_schema(s) for s in schemas]
         qualified_tables = self.get_qualified_tables_list(cursor, schemas)
-        if converted:
-            converter = self.table_name_converter
-        else:
-            converter = lambda x, plain: x
-        return set([converter((None, t), plain=True) for _, t in nonqualified_tables] +
-                   [converter(t, plain=True) for t in qualified_tables])
+        return set([QName(None, t, from_db) for _, t, from_db
+                    in nonqualified_tables]
+                   + qualified_tables)
     
     def get_qualified_tables_list(self, cursor, schemas):
         """
@@ -989,12 +1001,11 @@ class BaseDatabaseIntrospection(object):
 
     def django_table_names(self, only_existing=False):
         """
-        Returns a list of all table's qualified names that have associated Django
-        models and are in INSTALLED_APPS. The qualified names will be pairs of
-        (schema, table).
+        Returns a list of all table's qualified names that have associated
+        Django models and are in INSTALLED_APPS.
 
-        If only_existing is True, the resulting list will only include the tables
-        that actually exist in the database.
+        If only_existing is True, the resulting list will only include the
+        tables that actually exist in the database.
         """
         from django.db import models, router
         tables = set()
@@ -1005,16 +1016,19 @@ class BaseDatabaseIntrospection(object):
                 if not router.allow_syncdb(self.connection.alias, model):
                     continue
                 tables.add(model._meta.qualified_name)
-                tables.update([f.m2m_qualified_name() for f in model._meta.local_many_to_many])
+                tables.update([f.m2m_qualified_name()
+                               for f in model._meta.local_many_to_many])
         tables = list(tables)
-        found_tables = []
         if only_existing:
-            existing_tables = self.all_qualified_names(converted=True)
+            found_tables = []
+            existing_tables = self.all_qualified_names()
             found_tables.extend([
                 t for t in tables
-                if self.table_name_converter(t) in existing_tables
+                if self.qname_converter(t) in existing_tables
             ])
-        return found_tables
+            return found_tables
+        else:
+            return tables
 
     def installed_models(self, tables):
         """
@@ -1030,11 +1044,14 @@ class BaseDatabaseIntrospection(object):
                     all_models.append(model)
         return set([
             m for m in all_models
-            if self.table_name_converter(m._meta.qualified_name) in tables
+            if self.qname_converter(m._meta.qualified_name) in tables
         ])
 
     def sequence_list(self):
-        "Returns a list of information about all DB sequences for all models in all apps."
+        """
+        Returns a list of information about all DB sequences for all models
+        in all apps.
+        """
         from django.db import models, router
 
         apps = models.get_apps()
@@ -1048,17 +1065,17 @@ class BaseDatabaseIntrospection(object):
                     continue
                 for f in model._meta.local_fields:
                     if isinstance(f, models.AutoField):
-                        schema, table = self.table_name_converter(model._meta.qualified_name)
-                        sequence_list.append({'table': table, 'column': f.column,
-                                              'schema': schema})
+                        qname = self.qname_converter(model._meta.qualified_name)
+                        sequence_list.append({'qname': qname, 'column': f.column})
                         break # Only one AutoField is allowed per model, so don't bother continuing.
 
                 for f in model._meta.local_many_to_many:
                     # If this is an m2m using an intermediate table,
                     # we don't need to reset the sequence.
                     if f.rel.through is None:
-                        sequence_list.append({'table': f.m2m_db_table(), 'column': None,
-                                              'schema': f.m2m_db_schema()})
+                        qname = self.qname_converter(f.m2m_qualified_name())
+                        sequence_list.append({'qname': qname,
+                                              'column': None})
 
         return sequence_list
 

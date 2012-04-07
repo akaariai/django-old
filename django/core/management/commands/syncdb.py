@@ -55,12 +55,12 @@ class Command(NoArgsCommand):
         db = options.get('database')
         connection = connections[db]
         cursor = connection.cursor()
-        converter = connection.introspection.table_name_converter
+        converter = connection.introspection.qname_converter
         # We might fetch the same table multiple times - once as qualified and
         # once as visible table (None, t). That is wanted, so that we can easily
         # see if a model with schema = None is installed, as well as if model with
         # locked schema is installed.
-        tables = connection.introspection.all_qualified_names(converted=True)
+        tables = connection.introspection.all_qualified_names()
         
         # Get a list of already installed *models* so that references work right.
         seen_models = connection.introspection.installed_models(tables)
@@ -88,7 +88,7 @@ class Command(NoArgsCommand):
         if verbosity >= 1:
             print "Creating tables ..."
         seen_schemas = connection.introspection.schema_names()
-        seen_schemas = set([connection.introspection.table_name_converter(s)
+        seen_schemas = set([connection.introspection.identifier_converter(s)
                             for s in seen_schemas])
 
         for app_name, model_list in manifest.items():
@@ -125,7 +125,7 @@ class Command(NoArgsCommand):
                         print "Creating table %s" % model._meta.db_table
                 for statement in sql:
                     cursor.execute(statement)
-                tables.add(connection.introspection.table_name_converter(model._meta.qualified_name))
+                tables.add(connection.introspection.qname_converter(model._meta.qualified_name))
 
         transaction.commit_unless_managed(using=db)
         # We need to see if there are still some pending references left: this

@@ -129,7 +129,7 @@ class ParameterHandlingTest(TestCase):
         "An executemany call with too many/not enough parameters will raise an exception (Refs #12612)"
         cursor = connection.cursor()
         query = ('INSERT INTO %s (%s, %s) VALUES (%%s, %%s)' % (
-            connection.introspection.table_name_converter('backends_square'),
+            connection.introspection.identifier_converter('backends_square'),
             connection.ops.quote_name('root'),
             connection.ops.quote_name('square')
         ))
@@ -180,7 +180,7 @@ class LongNameTest(TestCase):
             },
         ]
         cursor = connection.cursor()
-        for statement in connection.ops.sql_flush(no_style(), tables, sequences, True):
+        for statement in connection.ops.sql_flush(no_style(), tables, sequences):
             cursor.execute(statement)
 
 class SequenceResetTest(TestCase):

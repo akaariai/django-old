@@ -48,16 +48,16 @@ class ManyToManyUnmanagedTests(TestCase):
         """
         The intermediary table between two unmanaged models should not be created.
         """
-        conv = connection.introspection.table_name_converter
+        conv = connection.introspection.qname_converter
         table = conv(Unmanaged2.mm.through._meta.qualified_name)
-        tables = connection.introspection.all_qualified_names(converted=True)
+        tables = connection.introspection.all_qualified_names()
         self.assertTrue(table not in tables, "Table '%s' should not exist, but it does." % table[1])
 
     def test_many_to_many_between_unmanaged_and_managed(self):
         """
         An intermediary table between a managed and an unmanaged model should be created.
         """
-        conv = connection.introspection.table_name_converter
+        conv = connection.introspection.qname_converter
         table = conv(Managed1.mm.through._meta.qualified_name)
-        tables = connection.introspection.all_qualified_names(converted=True)
+        tables = connection.introspection.all_qualified_names()
         self.assertTrue(table in tables, "Table '%s' does not exist." % table[1])
