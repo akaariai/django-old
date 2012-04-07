@@ -720,10 +720,8 @@ class FormatStylePlaceholderCursor(object):
         try:
             return self.cursor.execute(query, self._param_generator(params))
         except Database.IntegrityError, e:
-            print query
             raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]
         except Database.DatabaseError, e:
-            print query
             # cx_Oracle <= 4.4.0 wrongly raises a DatabaseError for ORA-01400.
             if hasattr(e.args[0], 'code') and e.args[0].code == 1400 and not isinstance(e, IntegrityError):
                 raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]
