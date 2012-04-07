@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.management.color import no_style
 from django.core.exceptions import ImproperlyConfigured
 from django.db import (backend, connection, connections, DEFAULT_DB_ALIAS,
-    IntegrityError, transaction)
+    IntegrityError, transaction, QName)
 from django.db.backends.signals import connection_created
 from django.db.backends.postgresql_psycopg2 import version as pg_version
 from django.db.utils import ConnectionHandler, DatabaseError, load_backend
@@ -175,8 +175,7 @@ class LongNameTest(TestCase):
         sequences = [
             {
                 'column': VLM._meta.pk.column,
-                'table': VLM._meta.db_table,
-                'schema': '',
+                'qname': QName(None, VLM._meta.db_table, False),
             },
         ]
         cursor = connection.cursor()

@@ -150,6 +150,7 @@ class BaseDatabaseCreation(object):
             # a proxy model - we don't need to create references, as
             # for proxy models one already exists, and for unmanaged
             # models it is the responsibility of the user to do that.
+            print model
             if model in pending_references:
                 del pending_references[model]
             return []

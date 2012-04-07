@@ -144,11 +144,6 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         return [r[0] for r in cursor.fetchall()]
 
     def qname_converter(self, qname, force_schema=False):
-        """
-        force_schema is a MySQL extension. If specified, we append
-        connection's settings_dict['NAME'] as a schema if nothing
-        else is specified.
-        """
         assert isinstance(qname, QName)
         if qname.db_format and (qname.schema or not force_schema):
             return qname

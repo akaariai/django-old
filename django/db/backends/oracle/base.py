@@ -88,23 +88,29 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "django.db.backends.oracle.compiler"
 
-    def autoinc_sql(self, qualified_name, column):
+    def autoinc_sql(self, qname, column):
         # To simulate auto-incrementing primary keys in Oracle, we have to
         # create a sequence and a trigger.
+        seq_name = self._get_sequence_name(qname)
+        schema = seq_name.schema.upper()
+        sname = self.connection.ops.qualified_name(seq_name).upper()
         params = {
-            'sq_name': self._get_sequence_name(qualified_name),
-            'tr_name': self._get_trigger_name(qualified_name),
-            'tbl_name': self.qualified_name(qualified_name, True),
+            'sq_name': seq_name.table,
+            'schema': schema,
+            'qualified_sq_name': sname,
+            'tr_name': self._get_trigger_name(qname),
+            'tbl_name': self.qualified_name(qname),
             'col_name' : self.quote_name(column),
         }
         sequence_sql = """
 DECLARE
     i INTEGER;
 BEGIN
-    SELECT COUNT(*) INTO i FROM USER_CATALOG
-        WHERE TABLE_NAME = '%(sq_name)s' AND TABLE_TYPE = 'SEQUENCE';
+    SELECT COUNT(*) INTO i FROM ALL_CATALOG
+        WHERE TABLE_NAME = '%(sq_name)s' AND OWNER = '%(schema)s'
+              AND TABLE_TYPE = 'SEQUENCE';
     IF i = 0 THEN
-        EXECUTE IMMEDIATE 'CREATE SEQUENCE %(sq_name)s';
+        EXECUTE IMMEDIATE 'CREATE SEQUENCE %(qualified_sq_name)s';
     END IF;
 END;
 /""" % params
@@ -114,7 +120,7 @@ BEFORE INSERT ON %(tbl_name)s
 FOR EACH ROW
 WHEN (new.%(col_name)s IS NULL)
     BEGIN
-        SELECT %(sq_name)s.nextval
+        SELECT %(qualified_sq_name)s.nextval
         INTO :new.%(col_name)s FROM dual;
     END;
 /""" % params
@@ -199,8 +205,10 @@ WHEN (new.%(col_name)s IS NULL)
     def deferrable_sql(self):
         return " DEFERRABLE INITIALLY DEFERRED"
 
-    def drop_sequence_sql(self, qualified_name):
-        return "DROP SEQUENCE %s;" % self._get_sequence_name(qualified_name)
+    def drop_sequence_sql(self, qname):
+        seq_name = self._get_sequence_name(qname)
+        qname = self.connection.ops.qualified_name(seq_name)
+        return "DROP SEQUENCE %s;" % qname
 
     def fetch_returned_insert_id(self, cursor):
         return long(cursor._insert_id_var.getvalue())
@@ -292,7 +300,7 @@ WHEN (new.%(col_name)s IS NULL)
     def savepoint_rollback_sql(self, sid):
         return convert_unicode("ROLLBACK TO SAVEPOINT " + self.quote_name(sid))
 
-    def sql_flush(self, style, tables, sequences, convert_names):
+    def sql_flush(self, style, tables, sequences):
         # Return a list of 'TRUNCATE x;', 'TRUNCATE y;',
         # 'TRUNCATE z;'... style SQL statements
         if tables:
@@ -301,29 +309,28 @@ WHEN (new.%(col_name)s IS NULL)
             sql = ['%s %s %s;' % \
                     (style.SQL_KEYWORD('DELETE'),
                      style.SQL_KEYWORD('FROM'),
-                     style.SQL_FIELD(self.qualified_name(table, convert_names)))
+                     style.SQL_FIELD(self.qualified_name(table)))
                     for table in tables]
             # Since we've just deleted all the rows, running our sequence
             # ALTER code will reset the sequence to 0.
             for sequence_info in sequences:
-                qname = sequence_info['schema'], sequence_info['table']
-                if convert_names:
-                    schema = self.connection.convert_schema(qname[0])
-                else:
-                    schema = qname[0]
-                schema = schema.upper()
-                sequence_name = self._get_sequence_name(qname[1])
-                table_name = self.qualified_name(qname, convert_names)
-                column_name = self.quote_name(sequence_info['column'] or 'id')
-                query = (_get_sequence_reset_sql(bool(schema))
-                         % {'sequence': sequence_name,
-                            'schema': schema,
-                            'table': table_name,
-                            'column': column_name})
-                sql.append(query)
+                q = self._sequence_reset_sql_for_col(
+                    sequence_info['qname'], sequence_info['column'] or 'id')
+                sql.append(q)
             return sql
         else:
             return []
+
+    def _sequence_reset_sql_for_col(self, qname, column):
+        qname = self.connection.introspection.qname_converter(qname)
+        qn = self.connection.ops.qualified_name
+        table = qn(qname)
+        sequence_name = self._get_sequence_name(qname)
+        column_name = self.quote_name(column)
+        params = {'sequence': sequence_name.table, 'table': table,
+                  'schema': sequence_name.schema.upper(), 'column': column_name}
+        query = _get_sequence_reset_sql(bool(params['schema']))
+        return query % params
 
     def sequence_reset_sql(self, style, model_list):
         from django.db import models
@@ -331,30 +338,17 @@ WHEN (new.%(col_name)s IS NULL)
         for model in model_list:
             for f in model._meta.local_fields:
                 if isinstance(f, models.AutoField):
-                    table_name = self.qualified_name(model._meta.qualified_name, True)
-                    schema = self.connection.convert_schema(model._meta.db_schema).upper()
-                    query = _get_sequence_reset_sql(bool(schema))
-                    sequence_name = self._get_sequence_name(model._meta.db_table)
-                    column_name = self.quote_name(f.column)
-                    output.append(query % {'sequence': sequence_name,
-                                           'schema': schema,
-                                           'table': table_name,
-                                           'column': column_name})
+                    q = self._sequence_reset_sql_for_col(
+                        model._meta.qualified_name, f.column)
+                    output.append(q)
                     # Only one AutoField is allowed per model, so don't
                     # continue to loop
                     break
             for f in model._meta.many_to_many:
                 if not f.rel.through:
-                    table_name = self.qualified_name(f.m2m_qualified_name(), True)
-                    schema = self.connection.convert_schema(f.m2m_qualified_name()[0]).upper()
-                    query = _get_sequence_reset_sql(bool(schema))
-                    seq_table = f.m2m_qualified_name()[1]
-                    sequence_name = self._get_sequence_name(seq_table)
-                    column_name = self.quote_name('id')
-                    output.append(query % {'sequence': sequence_name,
-                                           'table': table_name,
-                                           'schema': schema,
-                                           'column': column_name})
+                    q = self._sequence_reset_sql_for_col(
+                        f.m2m_qualified_name(), 'id')
+                    output.append(q)
         return output
 
     def start_transaction_sql(self):
@@ -408,17 +402,23 @@ WHEN (new.%(col_name)s IS NULL)
             raise NotImplementedError("Bit-wise or is not supported in Oracle.")
         return super(DatabaseOperations, self).combine_expression(connector, sub_expressions)
 
-    def _get_sequence_name(self, name):
+    def _get_sequence_name(self, qname):
+        assert isinstance(qname, QName)
+        qname = self.connection.introspection.qname_converter(qname,
+                                                              force_schema=True)
         name_length = self.max_name_length() - 3
-        if isinstance(name, tuple):
-            seq_name = '%s_SQ' % util.truncate_name(name[1], name_length).upper()
-            return self.qualified_name((name[0], seq_name), True)
-        return '%s_SQ' % util.truncate_name(name, name_length).upper()
+        seq_name = '%s_SQ' % util.truncate_name(qname.table,
+                                                name_length).upper()
+        return QName(qname.schema, seq_name, True)
+        #return '%s_SQ' % util.truncate_name(name, name_length).upper()
 
-    def _get_trigger_name(self, qualified_name):
+    def _get_trigger_name(self, qname):
+        assert isinstance(qname, QName)
+        qname = self.connection.introspection.qname_converter(qname)
         name_length = self.max_name_length() - 3
-        trig_name = '%s_TR' % util.truncate_name(qualified_name[1], name_length).upper()
-        return self.qualified_name((qualified_name[0], trig_name), True)
+        trig_name = '%s_TR' % util.truncate_name(qname.table,
+                                                 name_length).upper()
+        return self.qualified_name(QName(qname.schema, trig_name, True))
 
     def bulk_insert_sql(self, fields, num_values):
         items_sql = "SELECT %s FROM DUAL" % ", ".join(["%s"] * len(fields))
@@ -482,8 +482,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     
     def convert_schema(self, schema):
         schema = schema or self.schema
-        if (self.test_schema_prefix
-                and schema not in self.settings_dict['TEST_SCHEMAS']):
+        if schema and self.test_schema_prefix:
             return truncate_name('%s%s' % (self.test_schema_prefix, schema),
                                  self.ops.max_name_length())
         return schema
@@ -519,7 +518,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             conn_params = self.settings_dict['OPTIONS'].copy()
             if 'use_returning_into' in conn_params:
                 del conn_params['use_returning_into']
-            self.connection = Database.connect(conn_string, **conn_params)
+            try:
+                self.connection = Database.connect(conn_string, **conn_params)
+            except:
+                print conn_string
+                raise
             cursor = FormatStylePlaceholderCursor(self.connection)
             # Set oracle date to ansi date format.  This only needs to execute
             # once when we create a new connection. We also set the Territory
@@ -717,8 +720,10 @@ class FormatStylePlaceholderCursor(object):
         try:
             return self.cursor.execute(query, self._param_generator(params))
         except Database.IntegrityError, e:
+            print query
             raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]
         except Database.DatabaseError, e:
+            print query
             # cx_Oracle <= 4.4.0 wrongly raises a DatabaseError for ORA-01400.
             if hasattr(e.args[0], 'code') and e.args[0].code == 1400 and not isinstance(e, IntegrityError):
                 raise utils.IntegrityError, utils.IntegrityError(*tuple(e)), sys.exc_info()[2]

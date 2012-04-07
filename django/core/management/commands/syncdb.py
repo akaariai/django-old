@@ -136,8 +136,8 @@ class Command(NoArgsCommand):
             # Pass the references to connection-specific handler.
             connection.creation.post_create_pending_references(pending_references)
 
-        # Send the post_syncdb signal, so individual apps can do whatever they need
-        # to do at this point.
+        # Send the post_syncdb signal, so individual apps can do whatever they
+        # need to do at this point.
         emit_post_sync_signal(created_models, verbosity, interactive, db)
 
         # The connection may have been closed by a syncdb handler.

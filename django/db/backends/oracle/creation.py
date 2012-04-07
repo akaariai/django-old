@@ -1,5 +1,6 @@
 import sys
 import time
+from django.db import QName
 from django.db.backends.creation import BaseDatabaseCreation
 from django.core.management.color import no_style
 
@@ -278,10 +279,9 @@ class DatabaseCreation(BaseDatabaseCreation):
         if not self._test_user_create():
             return []
         cursor = self.connection.cursor()
-        self.connection.settings_dict['TEST_SCHEMAS'].append(self.connection.settings_dict['USER'])
         parameters = self._get_ddl_parameters()
         parameters['authorization'] = parameters['user']
-        conv = self.connection.introspection.table_name_converter
+        conv = self.connection.introspection.identifier_converter
         existing_schemas = [conv(s) for s in self.connection.introspection.get_schema_list(cursor)]
         conflicts = [conv(s) for s in existing_schemas if conv(s) in schemas]
         if conflicts:
@@ -307,8 +307,15 @@ class DatabaseCreation(BaseDatabaseCreation):
             if verbosity >= 1:
                 print "Creating user %s" % schema
             self._create_test_user(cursor, parameters, verbosity)
-            self.connection.settings_dict['TEST_SCHEMAS'].append(schema)
         return to_create
+
+    def needs_separate_conn(self, from_qname, to_qname):
+        conv = self.connection.introspection.qname_converter
+        def_schema = conv(QName(None, None, False), force_schema=True).schema
+        from_qname = conv(from_qname, force_schema=True)
+        to_qname = conv(to_qname, force_schema=True)
+        return (def_schema != from_qname.schema
+                or to_qname.schema != from_qname.schema)
 
     def sql_for_inline_foreign_key_references(self, field, known_models, style):
         """
@@ -317,12 +324,8 @@ class DatabaseCreation(BaseDatabaseCreation):
         Oracle doesn't let you do cross-schema foreign keys, except if you
         are connected to the "from" schema. Don't ask why.
         """
-        from_qname = field.model._meta.qualified_name
-        to_qname = field.rel.to._meta.qualified_name
-        from_schema = self.connection.convert_schema(from_qname[0])
-        to_schema = self.connection.convert_schema(to_qname[0])
-        if (to_schema and to_schema != from_schema):
-            # We must create this later on using a separate connection.
+        if self.needs_separate_conn(field.model._meta.qualified_name,
+                                    field.rel.to._meta.qualified_name):
             return [], True
         return super(DatabaseCreation, self).sql_for_inline_foreign_key_references(field, known_models, style)
 
@@ -358,12 +361,10 @@ class DatabaseCreation(BaseDatabaseCreation):
         # the super() method for the safe set.
         cross_schema_refs = []
         single_schema_refs = []
-        conv = self.connection.convert_schema
         if model in pending_references:
             for rel_class, f in pending_references[model]:
-                to_schema = conv(rel_class._meta.qualified_name)
-                from_schema = conv(model._meta.qualified_name)
-                if to_schema != from_schema:
+                if self.needs_separate_conn(rel_class._meta.qualified_name,
+                                            model._meta.qualified_name):
                     cross_schema_refs.append((rel_class, f))
                 else:
                     single_schema_refs.append((rel_class, f))
@@ -380,8 +381,9 @@ class DatabaseCreation(BaseDatabaseCreation):
         # Build a dictionary: from_schema -> [(model, refs)...]
         references_to_schema = {}
         sql = []
+        conv = self.connection.introspection.qname_converter
         for model, refs in pending_references.items():
-            schema = self.connection.convert_schema(model._meta.db_schema)
+            schema = conv(model._meta.qualified_name, force_schema=True).schema
             if schema not in references_to_schema:
                 references_to_schema[schema] = []
             references_to_schema[schema].append((model, refs))
@@ -390,7 +392,8 @@ class DatabaseCreation(BaseDatabaseCreation):
             grant_to = set()
             for model, refs in all_refs:
                 for ref in refs:
-                    to_user = self.connection.convert_schema(ref[0]._meta.db_schema)
+                    to_user = conv(ref[0]._meta.qualified_name,
+                                   force_schema=True).schema
                     if to_user != schema:
                         grant_to.add((model, to_user))
             sql.extend(self._grant_references(schema, grant_to, as_sql))
@@ -401,7 +404,8 @@ class DatabaseCreation(BaseDatabaseCreation):
         references_from_schema = {}
         for model, refs in pending_references.items():
             for ref in refs:
-                schema = self.connection.convert_schema(ref[0]._meta.db_schema)
+                schema = conv(ref[0]._meta.qualified_name,
+                              force_schema=True).schema
                 if schema not in references_from_schema:
                     references_from_schema[schema] = {}
                 if model not in references_from_schema[schema]:
