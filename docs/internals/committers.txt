@@ -355,6 +355,16 @@ Honza Král
 .. _Claude Paroz: http://www.2xlibre.net
 .. _l10n.gnome.org: http://l10n.gnome.org
 
+`Anssi Kääriäinen`_
+    Anssi is a Finnish developer who uses Django for creating business
+    applications at the Finnish National Institute for Health and Welfare.
+    He is also a student at Aalto university where he studies computer
+    science and mathematics.
+
+    Anssi's main interests in Django development is in improving the database
+    layer (anything under django.db). In addition he is interested in keeping
+    Django fast by providing benchmark results and optimizations, too.
+
 Specialists
 -----------
 
