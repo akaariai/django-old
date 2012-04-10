@@ -42,3 +42,12 @@ class Pointer(models.Model):
 
 class Pointer2(models.Model):
     other = models.OneToOneField(Target)
+
+class FoobarParent(models.Model):
+    name = models.CharField(max_length=20, unique=True)
+
+class Foobar(FoobarParent):
+    parent = models.OneToOneField(FoobarParent, parent_link=True, to_field='name')
+
+class Fuubar(models.Model):
+    foobar = models.OneToOneField(Foobar)

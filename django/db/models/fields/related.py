@@ -347,10 +347,7 @@ class ReverseSingleRelatedObjectDescriptor(object):
                 rel_obj = None
             else:
                 other_field = self.field.rel.get_related_field()
-                if other_field.rel:
-                    params = {'%s__pk' % self.field.rel.field_name: val}
-                else:
-                    params = {'%s__exact' % self.field.rel.field_name: val}
+                params = {'%s__exact' % self.field.rel.field_name: val}
                 qs = self.get_query_set(instance=instance)
                 # Assuming the database enforces foreign keys, this won't fail.
                 rel_obj = qs.get(**params)

@@ -2,7 +2,8 @@ from __future__ import absolute_import
 
 from django.test import TestCase
 
-from .models import Place, Restaurant, Bar, Favorites, Target, UndergroundBar
+from .models import (Place, Restaurant, Bar, Favorites, Target, UndergroundBar,
+                     Foobar, Fuubar, FoobarParent)
 
 
 class OneToOneRegressionTests(TestCase):
@@ -202,3 +203,10 @@ class OneToOneRegressionTests(TestCase):
         with self.assertNumQueries(0):
             with self.assertRaises(UndergroundBar.DoesNotExist):
                 self.p1.undergroundbar
+
+    def test_foobar_fuubar(self):
+        FoobarParent.objects.create(name='fuuf')
+        f = Foobar.objects.create(name='faaf')
+        Fuubar.objects.create(foobar=f)
+        f = Fuubar.objects.all()[0]
+        self.assertEquals(f.foobar.name, 'faaf')
