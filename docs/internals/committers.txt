@@ -359,11 +359,14 @@ Honza Král
     Anssi is a Finnish developer who uses Django for creating business
     applications at the Finnish National Institute for Health and Welfare.
     He is also a student at Aalto university where he studies computer
-    science and mathematics.
+    science with a heavy dose of mathematics.
 
     Anssi's main interests in Django development is in improving the database
-    layer (anything under django.db). In addition he is interested in keeping
-    Django fast by providing benchmark results and optimizations, too.
+    layer (anything under django.db). In addition he is interested in
+    optimizing and benchmarking Django.
+
+    Like Aymeric, Anssi believes that Django is a good fit for many
+    enterprise software projects.
 
 Specialists
 -----------
