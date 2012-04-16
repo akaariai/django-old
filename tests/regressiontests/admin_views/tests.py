@@ -6,7 +6,7 @@ import re
 import datetime
 import urlparse
 
-from django.conf import settings
+from django.conf import settings, global_settings
 from django.core import mail
 from django.core.exceptions import SuspiciousOperation
 from django.core.files import temp as tempfile
@@ -23,7 +23,6 @@ from django.contrib.auth import REDIRECT_FIELD_NAME
 from django.contrib.auth.models import Group, User, Permission, UNUSABLE_PASSWORD
 from django.contrib.contenttypes.models import ContentType
 from django.forms.util import ErrorList
-from django.template import context as context_module
 from django.template.response import TemplateResponse
 from django.test import TestCase
 from django.utils import formats, translation, unittest
@@ -93,9 +92,8 @@ class AdminViewBasicTest(TestCase):
     def testAddWithGETArgs(self):
         response = self.client.get('/test_admin/%s/admin_views/section/add/' % self.urlbit, {'name': 'My Section'})
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            'value="My Section"' in response.content,
-            "Couldn't find an input with the right value in the response."
+        self.assertContains(response, 'value="My Section"',
+            msg_prefix="Couldn't find an input with the right value in the response"
         )
 
     def testBasicEditGet(self):
@@ -394,13 +392,11 @@ class AdminViewBasicTest(TestCase):
         """
         response = self.client.get('/test_admin/%s/admin_views/thing/' % self.urlbit)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            '<div id="changelist-filter">' in response.content,
-            "Expected filter not found in changelist view."
+        self.assertContains(response, '<div id="changelist-filter">',
+            msg_prefix="Expected filter not found in changelist view"
         )
-        self.assertFalse(
-            '<a href="?color__id__exact=3">Blue</a>' in response.content,
-            "Changelist filter not correctly limited by limit_choices_to."
+        self.assertNotContains(response, '<a href="?color__id__exact=3">Blue</a>',
+            msg_prefix="Changelist filter not correctly limited by limit_choices_to"
         )
 
     def testRelationSpanningFilters(self):
@@ -460,16 +456,16 @@ class AdminViewBasicTest(TestCase):
         """Ensure is_null is handled correctly."""
         Article.objects.create(title="I Could Go Anywhere", content="Versatile", date=datetime.datetime.now())
         response = self.client.get('/test_admin/%s/admin_views/article/' % self.urlbit)
-        self.assertTrue('4 articles' in response.content, '"4 articles" missing from response')
+        self.assertContains(response, '4 articles')
         response = self.client.get('/test_admin/%s/admin_views/article/' % self.urlbit, {'section__isnull': 'false'})
-        self.assertTrue('3 articles' in response.content, '"3 articles" missing from response')
+        self.assertContains(response, '3 articles')
         response = self.client.get('/test_admin/%s/admin_views/article/' % self.urlbit, {'section__isnull': 'true'})
-        self.assertTrue('1 article' in response.content, '"1 article" missing from response')
+        self.assertContains(response, '1 article')
 
     def testLogoutAndPasswordChangeURLs(self):
         response = self.client.get('/test_admin/%s/admin_views/article/' % self.urlbit)
-        self.assertFalse('<a href="/test_admin/%s/logout/">' % self.urlbit not in response.content)
-        self.assertFalse('<a href="/test_admin/%s/password_change/">' % self.urlbit not in response.content)
+        self.assertContains(response, '<a href="/test_admin/%s/logout/">' % self.urlbit)
+        self.assertContains(response, '<a href="/test_admin/%s/password_change/">' % self.urlbit)
 
     def testNamedGroupFieldChoicesChangeList(self):
         """
@@ -492,10 +488,7 @@ class AdminViewBasicTest(TestCase):
         """
         response = self.client.get('/test_admin/%s/admin_views/fabric/' % self.urlbit)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            '<div id="changelist-filter">' in response.content,
-            "Expected filter not found in changelist view."
-        )
+        self.assertContains(response, '<div id="changelist-filter">')
         self.assertTrue(
             '<a href="?surface__exact=x">Horizontal</a>' in response.content and
             '<a href="?surface__exact=y">Vertical</a>' in response.content,
@@ -508,7 +501,7 @@ class AdminViewBasicTest(TestCase):
         # against the 'admin2' custom admin (which doesn't have the
         # Post model).
         response = self.client.get("/test_admin/admin/admin_views/post/")
-        self.assertTrue('icon-unknown.gif' in response.content)
+        self.assertContains(response, 'icon-unknown.gif')
 
     def testI18NLanguageNonEnglishDefault(self):
         """
@@ -760,7 +753,7 @@ class CustomModelAdminTest(AdminViewBasicTest):
     def testCustomAdminSiteView(self):
         self.client.login(username='super', password='secret')
         response = self.client.get('/test_admin/%s/my_view/' % self.urlbit)
-        self.assertTrue(response.content == "Django is a magical pony!", response.content)
+        self.assertEqual(response.content, "Django is a magical pony!")
 
 def get_perm(Model, perm):
     """Return the permission object, for the Model"""
@@ -1658,9 +1651,9 @@ class AdminViewListEditable(TestCase):
         # CSRF field = 1
         # field to track 'select all' across paginated views = 1
         # 6 + 3 + 4 + 1 + 2 + 1 + 1 = 18 inputs
-        self.assertEqual(response.content.count("<input"), 18)
+        self.assertContains(response, "<input", count=18)
         # 1 select per object = 3 selects
-        self.assertEqual(response.content.count("<select"), 4)
+        self.assertContains(response, "<select", count=4)
 
     def test_post_messages(self):
         # Ticket 12707: Saving inline editable should not show admin
@@ -1894,13 +1887,13 @@ class AdminViewListEditable(TestCase):
         UnorderedObject.objects.create(id=2, name='Unordered object #2')
         UnorderedObject.objects.create(id=3, name='Unordered object #3')
         response = self.client.get('/test_admin/admin/admin_views/unorderedobject/')
-        self.assertContains(response, 'Unordered object #1')
-        self.assertContains(response, 'Unordered object #2')
-        self.assertNotContains(response, 'Unordered object #3')
-        response = self.client.get('/test_admin/admin/admin_views/unorderedobject/?p=1')
-        self.assertNotContains(response, 'Unordered object #1')
-        self.assertNotContains(response, 'Unordered object #2')
         self.assertContains(response, 'Unordered object #3')
+        self.assertContains(response, 'Unordered object #2')
+        self.assertNotContains(response, 'Unordered object #1')
+        response = self.client.get('/test_admin/admin/admin_views/unorderedobject/?p=1')
+        self.assertNotContains(response, 'Unordered object #3')
+        self.assertNotContains(response, 'Unordered object #2')
+        self.assertContains(response, 'Unordered object #1')
 
     def test_list_editable_action_submit(self):
         # List editable changes should not be executed if the action "Go" button is
@@ -2188,7 +2181,8 @@ class AdminActionsTest(TestCase):
         }
         response = self.client.post('/test_admin/admin/admin_views/subscriber/', action_data)
         self.assertTemplateUsed(response, 'admin/delete_selected_confirmation.html')
-        self.assertTrue('value="9999"' in response.content and 'value="2"' in response.content) # Instead of 9,999
+        self.assertContains(response, 'value="9999"') # Instead of 9,999
+        self.assertContains(response, 'value="2"')
         settings.USE_THOUSAND_SEPARATOR = self.old_USE_THOUSAND_SEPARATOR
         settings.USE_L10N = self.old_USE_L10N
 
@@ -2267,27 +2261,23 @@ class AdminActionsTest(TestCase):
         "Tests a ModelAdmin without any action"
         response = self.client.get('/test_admin/admin/admin_views/oldsubscriber/')
         self.assertEqual(response.context["action_form"], None)
-        self.assertTrue(
-            '<input type="checkbox" class="action-select"' not in response.content,
-            "Found an unexpected action toggle checkboxbox in response"
-        )
-        self.assertTrue('action-checkbox-column' not in response.content,
-            "Found unexpected action-checkbox-column class in response")
+        self.assertNotContains(response, '<input type="checkbox" class="action-select"',
+            msg_prefix="Found an unexpected action toggle checkboxbox in response")
+        self.assertNotContains(response, '<input type="checkbox" class="action-select"')
 
     def test_model_without_action_still_has_jquery(self):
         "Tests that a ModelAdmin without any actions still gets jQuery included in page"
         response = self.client.get('/test_admin/admin/admin_views/oldsubscriber/')
         self.assertEqual(response.context["action_form"], None)
-        self.assertTrue('jquery.min.js' in response.content,
-            "jQuery missing from admin pages for model with no admin actions"
+        self.assertContains(response, 'jquery.min.js',
+            msg_prefix="jQuery missing from admin pages for model with no admin actions"
         )
 
     def test_action_column_class(self):
         "Tests that the checkbox column class is present in the response"
         response = self.client.get('/test_admin/admin/admin_views/subscriber/')
         self.assertNotEqual(response.context["action_form"], None)
-        self.assertTrue('action-checkbox-column' in response.content,
-            "Expected an action-checkbox-column in response")
+        self.assertContains(response, 'action-checkbox-column')
 
     def test_multiple_actions_form(self):
         """
@@ -3062,7 +3052,7 @@ class ReadonlyTest(TestCase):
         self.assertNotContains(response, 'name="posted"')
         # 3 fields + 2 submit buttons + 4 inline management form fields, + 2
         # hidden fields for inlines + 1 field for the inline + 2 empty form
-        self.assertEqual(response.content.count("<input"), 14)
+        self.assertContains(response, "<input", count=14)
         self.assertContains(response, formats.localize(datetime.date.today()))
         self.assertContains(response,
             "<label>Awesomeness level:</label>")
@@ -3364,29 +3354,21 @@ class ValidXHTMLTests(TestCase):
     urlbit = 'admin'
 
     def setUp(self):
-        self._context_processors = None
-        self._use_i18n, settings.USE_I18N = settings.USE_I18N, False
-        if 'django.core.context_processors.i18n' in settings.TEMPLATE_CONTEXT_PROCESSORS:
-            self._context_processors = settings.TEMPLATE_CONTEXT_PROCESSORS
-            cp = list(settings.TEMPLATE_CONTEXT_PROCESSORS)
-            cp.remove('django.core.context_processors.i18n')
-            settings.TEMPLATE_CONTEXT_PROCESSORS = tuple(cp)
-            # Force re-evaluation of the contex processor list
-            context_module._standard_context_processors = None
         self.client.login(username='super', password='secret')
 
     def tearDown(self):
         self.client.logout()
-        if self._context_processors is not None:
-            settings.TEMPLATE_CONTEXT_PROCESSORS = self._context_processors
-            # Force re-evaluation of the contex processor list
-            context_module._standard_context_processors = None
-        settings.USE_I18N = self._use_i18n
 
+    @override_settings(
+        TEMPLATE_CONTEXT_PROCESSORS=filter(
+            lambda t:t!='django.core.context_processors.i18n',
+            global_settings.TEMPLATE_CONTEXT_PROCESSORS),
+        USE_I18N=False,
+    )
     def testLangNamePresent(self):
         response = self.client.get('/test_admin/%s/admin_views/' % self.urlbit)
-        self.assertFalse(' lang=""' in response.content)
-        self.assertFalse(' xml:lang=""' in response.content)
+        self.assertNotContains(response, ' lang=""')
+        self.assertNotContains(response, ' xml:lang=""')
 
 
 class DateHierarchyTests(TestCase):

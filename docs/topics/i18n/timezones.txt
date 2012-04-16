@@ -199,7 +199,7 @@ Create a view that can set the current timezone::
 
     def set_timezone(request):
         if request.method == 'POST':
-            request.session[session_key] = pytz.timezone(request.POST['timezone'])
+            request.session['django_timezone'] = pytz.timezone(request.POST['timezone'])
             return redirect('/')
         else:
             return render(request, 'template.html', {'timezones': pytz.common_timezones})
@@ -306,12 +306,6 @@ time zone is unset, the default time zone applies.
     {% timezone None %}
         Server time: {{ value }}
     {% endtimezone %}
-
-.. note::
-
-    In the second block, ``None`` resolves to the Python object ``None``
-    because it isn't defined in the template context, not because it's the
-    string ``None``.
 
 .. templatetag:: get_current_timezone
 

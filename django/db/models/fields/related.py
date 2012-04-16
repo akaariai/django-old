@@ -237,7 +237,9 @@ class SingleRelatedObjectDescriptor(object):
         return self.related.model._base_manager.using(db)
 
     def get_prefetch_query_set(self, instances):
-        return (self.get_query_set(instance=instances[0]),
+        vals = set(instance._get_pk_val() for instance in instances)
+        params = {'%s__pk__in' % self.related.field.name: vals}
+        return (self.get_query_set(instance=instances[0]).filter(**params),
                 attrgetter(self.related.field.attname),
                 lambda obj: obj._get_pk_val(),
                 True,
@@ -247,11 +249,19 @@ class SingleRelatedObjectDescriptor(object):
         if instance is None:
             return self
         try:
-            return getattr(instance, self.cache_name)
+            rel_obj = getattr(instance, self.cache_name)
         except AttributeError:
             params = {'%s__pk' % self.related.field.name: instance._get_pk_val()}
-            rel_obj = self.get_query_set(instance=instance).get(**params)
+            try:
+                rel_obj = self.get_query_set(instance=instance).get(**params)
+            except self.related.model.DoesNotExist:
+                rel_obj = None
+            else:
+                setattr(rel_obj, self.related.field.get_cache_name(), instance)
             setattr(instance, self.cache_name, rel_obj)
+        if rel_obj is None:
+            raise self.related.model.DoesNotExist
+        else:
             return rel_obj
 
     def __set__(self, instance, value):
@@ -329,29 +339,32 @@ class ReverseSingleRelatedObjectDescriptor(object):
     def __get__(self, instance, instance_type=None):
         if instance is None:
             return self
-
         try:
-            return getattr(instance, self.cache_name)
+            rel_obj = getattr(instance, self.cache_name)
         except AttributeError:
             val = getattr(instance, self.field.attname)
             if val is None:
-                # If NULL is an allowed value, return it.
-                if self.field.null:
-                    return None
-                raise self.field.rel.to.DoesNotExist
-            other_field = self.field.rel.get_related_field()
-            if other_field.rel:
-                params = {'%s__pk' % self.field.rel.field_name: val}
+                rel_obj = None
             else:
-                params = {'%s__exact' % self.field.rel.field_name: val}
-            qs = self.get_query_set(instance=instance)
-            rel_obj = qs.get(**params)
+                other_field = self.field.rel.get_related_field()
+                if other_field.rel:
+                    params = {'%s__pk' % self.field.rel.field_name: val}
+                else:
+                    params = {'%s__exact' % self.field.rel.field_name: val}
+                qs = self.get_query_set(instance=instance)
+                # Assuming the database enforces foreign keys, this won't fail.
+                rel_obj = qs.get(**params)
+                if not self.field.rel.multiple:
+                    setattr(rel_obj, self.field.related.get_cache_name(), instance)
             setattr(instance, self.cache_name, rel_obj)
+        if rel_obj is None and not self.field.null:
+            raise self.field.rel.to.DoesNotExist
+        else:
             return rel_obj
 
     def __set__(self, instance, value):
         if instance is None:
-            raise AttributeError("%s must be accessed via instance" % self._field.name)
+            raise AttributeError("%s must be accessed via instance" % self.field.name)
 
         # If null=True, we can assign null here, but otherwise the value needs
         # to be an instance of the related class.
@@ -383,17 +396,13 @@ class ReverseSingleRelatedObjectDescriptor(object):
             # populated the cache, then we don't care - we're only accessing
             # the object to invalidate the accessor cache, so there's no
             # need to populate the cache just to expire it again.
-            related = getattr(instance, self.field.get_cache_name(), None)
+            related = getattr(instance, self.cache_name, None)
 
             # If we've got an old related object, we need to clear out its
             # cache. This cache also might not exist if the related object
             # hasn't been accessed yet.
-            if related:
-                cache_name = self.field.related.get_cache_name()
-                try:
-                    delattr(related, cache_name)
-                except AttributeError:
-                    pass
+            if related is not None:
+                setattr(related, self.field.related.get_cache_name(), None)
 
         # Set the value of the related field
         try:
@@ -403,9 +412,11 @@ class ReverseSingleRelatedObjectDescriptor(object):
         setattr(instance, self.field.attname, val)
 
         # Since we already know what the related object is, seed the related
-        # object cache now, too. This avoids another db hit if you get the
+        # object caches now, too. This avoids another db hit if you get the
         # object you just set.
-        setattr(instance, self.field.get_cache_name(), value)
+        setattr(instance, self.cache_name, value)
+        if value is not None and not self.field.rel.multiple:
+            setattr(value, self.field.related.get_cache_name(), instance)
 
 class ForeignRelatedObjectsDescriptor(object):
     # This class provides the functionality that makes the related-object

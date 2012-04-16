@@ -1,7 +1,9 @@
 from __future__ import absolute_import
 
 from django.contrib.contenttypes.models import ContentType
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import override_settings
 
 from .models import (Author, Book, Reader, Qualification, Teacher, Department,
     TaggedItem, Bookmark, AuthorAddress, FavoriteAuthors, AuthorWithAge,
@@ -65,6 +67,14 @@ class PrefetchRelatedTests(TestCase):
                      for b in Book.objects.prefetch_related('first_time_authors')]
 
         self.assertQuerysetEqual(self.book2.authors.all(), [u"<Author: Charlotte>"])
+
+    def test_onetoone_reverse_no_match(self):
+        # Regression for #17439
+        with self.assertNumQueries(2):
+            book = Book.objects.prefetch_related('bookwithyear').all()[0]
+        with self.assertNumQueries(0):
+            with self.assertRaises(BookWithYear.DoesNotExist):
+                book.bookwithyear
 
     def test_survives_clone(self):
         with self.assertNumQueries(2):
@@ -356,9 +366,15 @@ class MultiTableInheritanceTest(TestCase):
         with self.assertNumQueries(2):
             [a.author for a in AuthorWithAge.objects.prefetch_related('author')]
 
+    @override_settings(DEBUG=True)
     def test_child_link_prefetch(self):
         with self.assertNumQueries(2):
             l = [a.authorwithage for a in Author.objects.prefetch_related('authorwithage')]
+
+        # Regression for #18090: the prefetching query must include an IN clause.
+        executed_sql = connection.queries[-1]['sql'].lower()
+        self.assertIn('authorwithage', executed_sql)
+        self.assertIn(' in ', executed_sql)
 
         self.assertEqual(l, [a.authorwithage for a in Author.objects.all()])
 

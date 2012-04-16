@@ -145,12 +145,10 @@ class BaseDatabaseCreation(object):
         """
         from django.db.backends.util import truncate_name
 
-        if not model._meta.managed:
+        if not model._meta.managed or model._meta.proxy:
             # So, we have a reference to either unmanaged model or to
-            # a proxy model - we don't need to create references, as
-            # for proxy models one already exists, and for unmanaged
-            # models it is the responsibility of the user to do that.
-            print model
+            # a proxy model. Lets just clear the pending_references
+            # for now.
             if model in pending_references:
                 del pending_references[model]
             return []
